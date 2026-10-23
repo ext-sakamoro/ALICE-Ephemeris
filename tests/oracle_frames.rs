@@ -1,13 +1,13 @@
 //! Oracle: Earth rotation angle, GMST (1982), polar motion and TEME → ITRS.
 //!
-//! - `tests/golden/frames.csv` (scripts/gen_frames_golden.py):
-//!   `era00`, `gmst82` and `sp00` of two-part Julian dates. The bit reference
-//!   is ERFA 2.0.1's expressions evaluated one IEEE operation at a time in
-//!   Python; pyerfa 2.0.1.5 itself is compared within the rounding of the
-//!   unreduced angle, because its arm64 build fuses a multiply and an add.
-//!   `pom00` matrices and TEME → ITRS positions (`pom00 · Rz(gmst82) · r`),
-//!   which go through sine and cosine (alice-det-math here, the platform libm
-//!   in ERFA), match within a few ulp.
+//! - `tests/golden/frames.csv` (scripts/gen_frames_golden.py): ERFA 2.0.1's
+//!   expressions evaluated one IEEE binary64 operation at a time with
+//!   correctly rounded sines and cosines (the same table on every machine;
+//!   the generator checks pyerfa against it within derived bounds). `era00`,
+//!   `gmst82` and `sp00` use no transcendental and must match bit for bit;
+//!   `pom00` matrices and TEME → ITRS positions (`pom00 · Rz(gmst82) · r`) go
+//!   through alice-det-math's sine and cosine (not correctly rounded) and
+//!   match within a few ulp.
 //! - The Earth rotation angle of exact instants against its definition
 //!   evaluated at 60 digits (mpmath), within the rounding of the two-part
 //!   Julian date (≤ 1 ulp of the day fraction, 2π·1.0027 × 1.1 × 10⁻¹⁶ rad)
@@ -41,21 +41,6 @@ fn era_gmst_and_s_prime_match_the_erfa_expressions_bit_for_bit() {
         assert_eq!(era.to_bits(), f64_(&r[3]).to_bits(), "era {ctx}");
         assert_eq!(gmst.to_bits(), f64_(&r[4]).to_bits(), "gmst {ctx}");
         assert_eq!(sp.to_bits(), f64_(&r[5]).to_bits(), "sp {ctx}");
-        // pyerfa: a fused multiply-add changes the unreduced angle by ≤ 1 ulp
-        // per operation; bound 4 ulp of its largest magnitude
-        let t = (d.jd1 - 2_451_545.0 + d.jd2).abs();
-        let era_mag = core::f64::consts::TAU * (2.0 + 0.002_74 * t);
-        let gmst_mag = 7.272_205_216_643_04e-5 * (1.3e5 + 236.56 * t);
-        let near = |a: f64, b: f64, mag: f64| {
-            let e = (a - b).abs();
-            alice_det_math::min64(e, core::f64::consts::TAU - e) <= 4.0 * f64::EPSILON * mag
-        };
-        assert!(near(era, f64_(&r[6]), era_mag), "pyerfa era {ctx}");
-        assert!(near(gmst, f64_(&r[7]), gmst_mag), "pyerfa gmst {ctx}");
-        assert!(
-            (sp - f64_(&r[8])).abs() <= 4.0 * f64::EPSILON * sp.abs(),
-            "pyerfa sp {ctx}"
-        );
         compared += 1;
     }
     assert_eq!(compared, 935);

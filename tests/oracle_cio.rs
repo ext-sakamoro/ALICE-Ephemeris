@@ -4,9 +4,11 @@
 //! - The test vectors of ERFA 2.0.1 (`t_erfa_c.c`: `t_nut00a`, `t_nut06a`,
 //!   `t_pfw06`, `t_obl06`, `t_pnm06a`, `t_s06`, `t_c2i06a`, `t_c2t06a`), with
 //!   the tolerances ERFA's own test uses.
-//! - `tests/golden/cio.csv` (scripts/gen_cio_golden.py, pyerfa 2.0.1.5) over
-//!   1800–2200: the same series evaluated with alice-det-math's sine and
-//!   cosine here and the platform libm (and fused multiply-adds) in pyerfa.
+//! - `tests/golden/cio.csv` (scripts/gen_cio_golden.py) over 1800–2200: ERFA's
+//!   expressions evaluated one IEEE binary64 operation at a time with
+//!   correctly rounded sines, cosines and arctangents (the same table on every
+//!   machine; the generator checks pyerfa against it within the bounds below),
+//!   compared with the same series evaluated with alice-det-math here.
 //!   Each of the 1365 nutation terms then differs by a few ulp of its
 //!   argument: below 10⁻¹² of the sum of the amplitudes (1.3 × 10⁻⁴ rad), so
 //!   the nutation angles agree within 2 × 10⁻¹⁶ rad and the matrices within

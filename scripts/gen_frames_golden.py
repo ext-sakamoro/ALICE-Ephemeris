@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Generate tests/golden/frames.csv: Earth rotation angle, GMST (1982), s'
-and the TEME -> ITRS rotation from ERFA (pyerfa), and the Earth rotation
-angle of exact instants from a 60-digit evaluation of its definition.
+"""Generate tests/golden/frames.csv: Earth rotation angle, GMST (1982), s',
+polar motion and the TEME -> ITRS rotation as ERFA 2.0.1 computes them, and
+the Earth rotation angle of exact instants from a 60-digit evaluation of its
+definition.
 
-None of the expected values comes from this crate. Two-part Julian dates are
-listed with their exact bits, so that ERFA and the crate read the same input.
+None of the expected values comes from this crate. Every value written is the
+same on every machine: ERFA's expressions evaluated one IEEE binary64
+operation at a time with correctly rounded sines and cosines
+(scripts/erfa_ieee.py), and mpmath. pyerfa (whose build may fuse a*b + c and
+uses the platform libm) is run on every row as a cross-check within bounds
+derived from the arithmetic; a row outside them, or too few rows compared,
+fails.
 
 Usage (versions pinned in scripts/oracle-requirements.txt):
     .venv/bin/python -I scripts/gen_frames_golden.py           # write
     .venv/bin/python -I scripts/gen_frames_golden.py --check   # compare
 """
 
-import math
 import pathlib
 import sys
 
@@ -19,61 +24,39 @@ import erfa
 import mpmath
 import numpy
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import erfa_ieee as E  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "tests" / "golden" / "frames.csv"
 PINS = {"pyerfa": "2.0.1.5", "numpy": "2.5.4", "mpmath": "1.4.1"}
 ATTO = 10**18
-mpmath.mp.dps = 60
-
-
-# ERFA 2.0.1 constants (erfam.h)
-D2PI = 6.283185307179586476925287
-DS2R = 7.272205216643039903848712e-5
-DAS2R = 4.848136811095359935899141e-6
-DJ00 = 2451545.0
-DJC = 36525.0
-DAYSEC = 86400.0
-
-
-# ERFA's expressions evaluated one IEEE operation at a time (CPython rounds
-# each operation; math.fmod is exact). The pyerfa wheel may contract a
-# multiply and an add into one fused operation, so its bits depend on how it
-# was built: these are the bit reference, pyerfa a cross-check within the
-# rounding of the unreduced angle.
-def anp(a):
-    w = math.fmod(a, D2PI)
-    return w + D2PI if w < 0 else w
-
-
-def ordered(jd1, jd2):
-    return (jd1, jd2) if jd1 < jd2 else (jd2, jd1)
-
-
-def era00(jd1, jd2):
-    d1, d2 = ordered(jd1, jd2)
-    t = d1 + (d2 - DJ00)
-    f = math.fmod(d1, 1.0) + math.fmod(d2, 1.0)
-    return anp(D2PI * (f + 0.7790572732640 + 0.00273781191135448 * t))
-
-
-def gmst82(jd1, jd2):
-    a = 24110.54841 - DAYSEC / 2.0
-    b, c, d = 8640184.812866, 0.093104, -6.2e-6
-    d1, d2 = ordered(jd1, jd2)
-    t = (d1 + (d2 - DJ00)) / DJC
-    f = DAYSEC * (math.fmod(d1, 1.0) + math.fmod(d2, 1.0))
-    return anp(DS2R * ((a + (b + (c + d * t) * t) * t) + f))
-
-
-def sp00(jd1, jd2):
-    t = ((jd1 - DJ00) + jd2) / DJC
-    return -47e-6 * t * DAS2R
+EPS = 2.220446049250313e-16
 
 
 def check_pins():
     got = {"pyerfa": erfa.__version__, "numpy": numpy.__version__, "mpmath": mpmath.__version__}
     if got != PINS:
         sys.exit(f"tool versions {got} differ from the pins {PINS}")
+
+
+class CrossCheck:
+    """pyerfa against the bit reference, within a bound; counts comparisons."""
+
+    def __init__(self):
+        self.compared = 0
+
+    def angle(self, ours, theirs, mag, what):
+        e = abs(ours - float(theirs))
+        e = min(e, E.D2PI - e)
+        if e > 4 * EPS * mag:
+            sys.exit(f"pyerfa {what}: {ours!r} vs {float(theirs)!r} ({e:e} > {4 * EPS * mag:e})")
+        self.compared += 1
+
+    def value(self, ours, theirs, tol, what):
+        if abs(ours - float(theirs)) > tol:
+            sys.exit(f"pyerfa {what}: {ours!r} vs {float(theirs)!r} (> {tol:e})")
+        self.compared += 1
 
 
 def jd_inputs():
@@ -83,12 +66,12 @@ def jd_inputs():
     k = 0
     day = -36525
     while day <= 36525:
-        frac = ((k * 0.6180339887498949) % 1.0)
+        frac = (k * 0.6180339887498949) % 1.0
         out.append((2451545.0 + day, frac))
         if k % 7 == 0:
-            out.append((frac, 2451545.0 + day))  # reversed order
+            out.append((frac, 2451545.0 + day))
         if k % 11 == 0:
-            out.append((2400000.5, 51544.5 + day + frac))  # MJD split
+            out.append((2400000.5, 51544.5 + day + frac))
         day += 97
         k += 1
     out += [(2451545.0, 0.0), (2451545.0, 0.5), (2451544.5, 0.0), (2451545.0, -0.25)]
@@ -96,7 +79,6 @@ def jd_inputs():
 
 
 def instants():
-    """UT1 instants (seconds since J2000.0, attoseconds), 1900..2100."""
     out = []
     s, k = -3155760000, 0
     while s <= 3155760000:
@@ -108,58 +90,73 @@ def instants():
 
 
 def era_exact(sec, atto):
-    """Earth rotation angle of UT1 = J2000.0 + sec + atto, from its
-    definition (IERS Conventions 2010, eq. 5.15) at 60 digits, in [0, 2pi)."""
-    tu = mpmath.mpf(sec * ATTO + atto) / (86400 * ATTO)
-    cycles = mpmath.mpf("0.7790572732640") + mpmath.mpf("1.00273781191135448") * tu
-    return 2 * mpmath.pi * (cycles - mpmath.floor(cycles))
+    """Earth rotation angle of UT1 = J2000.0 + sec + atto (IERS Conventions
+    2010, eq. 5.15) at 60 digits, in [0, 2pi)."""
+    with mpmath.workdps(60):
+        tu = mpmath.mpf(sec * ATTO + atto) / (86400 * ATTO)
+        cycles = mpmath.mpf("0.7790572732640") + mpmath.mpf("1.00273781191135448") * tu
+        return 2 * mpmath.pi * (cycles - mpmath.floor(cycles))
 
 
 def teme_cases():
-    """(jd1, jd2 of UT1, jd2 of TT, xp, yp rad, r TEME km): a few epochs and
-    vectors, pole coordinates of the size of the real ones."""
+    """(jd1, jd2 of UT1, jd2 of TT, xp, yp, r TEME km), every input exact in
+    binary64 and the same on every machine."""
     out = []
-    as2r = erfa.DAS2R
     for k in range(40):
         jd1 = 2451545.0 + (k * 911) - 18000
         jd2 = (k * 0.37) % 1.0
-        r = (7000.0 * numpy.cos(k), 6500.0 * numpy.sin(1.3 * k), 3000.0 + 100.0 * k)
-        xp = (0.3 * numpy.sin(0.7 * k)) * as2r
-        yp = (0.5 * numpy.cos(0.4 * k)) * as2r
+        r = (7000.0 * E.cos_cr(float(k)), 6500.0 * E.sin_cr(1.3 * k), 3000.0 + 100.0 * k)
+        xp = (0.3 * E.sin_cr(0.7 * k)) * E.DAS2R
+        yp = (0.5 * E.cos_cr(0.4 * k)) * E.DAS2R
         out.append((jd1, jd2, jd2 + 69.184 / 86400.0, xp, yp, r))
     return out
 
 
 def main():
     check_pins()
-    lines = ["# generated by scripts/gen_frames_golden.py (pyerfa 2.0.1.5, mpmath 60 digits)"]
+    cc = CrossCheck()
+    lines = ["# generated by scripts/gen_frames_golden.py (ERFA 2.0.1 expressions in IEEE binary64, mpmath)"]
     lines.append("kind,a,b,c,d,e,f,g,h,i,j,k,l")
     for jd1, jd2 in jd_inputs():
-        lines.append(
-            f"jd,{jd1!r},{jd2!r},{era00(jd1, jd2)!r},{gmst82(jd1, jd2)!r},{sp00(jd1, jd2)!r},"
-            f"{float(erfa.era00(jd1, jd2))!r},{float(erfa.gmst82(jd1, jd2))!r},"
-            f"{float(erfa.sp00(jd1, jd2))!r},,,,"
-        )
+        era, gmst, sp = E.era00(jd1, jd2), E.gmst82(jd1, jd2), E.sp00(jd1, jd2)
+        t = abs(jd1 - E.DJ00 + jd2)
+        cc.angle(era, erfa.era00(jd1, jd2), E.D2PI * (2.0 + 0.00274 * t), "era00")
+        cc.angle(gmst, erfa.gmst82(jd1, jd2), E.DS2R * (1.3e5 + 236.56 * t), "gmst82")
+        cc.value(sp, erfa.sp00(jd1, jd2), 4 * EPS * abs(sp), "sp00")
+        lines.append(f"jd,{jd1!r},{jd2!r},{era!r},{gmst!r},{sp!r},,,,,,,")
     for sec, atto in instants():
         lines.append(f"era_exact,{sec},{atto},{mpmath.nstr(era_exact(sec, atto), 30)},,,,,,,,,")
     for jd1, jd2, jd2tt, xp, yp, r in teme_cases():
-        gmst = gmst82(jd1, jd2)
-        sp = sp00(jd1, jd2tt)
-        rpom = erfa.pom00(xp, yp, sp)
-        itrs = rpom @ erfa.rz(gmst, numpy.identity(3)) @ numpy.array(r)
+        gmst = E.gmst82(jd1, jd2)
+        rpom = E.pom00(xp, yp, E.sp00(jd1, jd2tt))
+        rot = E.ident()
+        E.rz(gmst, rot)
+        itrs = E.rxp(E.rxr(rpom, rot), list(r))
+        ref = (erfa.pom00(xp, yp, erfa.sp00(jd1, jd2tt))
+               @ erfa.rz(erfa.gmst82(jd1, jd2), numpy.identity(3)) @ numpy.array(r))
+        for c in range(3):
+            # |r| <= 1.1e4 km; GMST may differ by 4 ulp of its unreduced value
+            # (<= 3e-13 rad here) and each matrix element by a few ulp
+            cc.value(itrs[c], ref[c], 1.1e4 * 4e-13 + 1e-11, "teme")
         vals = (jd1, jd2, jd2tt, xp, yp, *r, *itrs)
         lines.append("teme," + ",".join(repr(float(v)) for v in vals) + ",")
     for xp, yp, sp in [(1e-6, 2e-6, -1e-11), (-1.5e-6, 0.7e-6, 3e-12), (0.0, 0.0, 0.0)]:
-        m = erfa.pom00(xp, yp, sp).reshape(9)
+        m = [v for row in E.pom00(xp, yp, sp) for v in row]
+        for ours, theirs in zip(m, erfa.pom00(xp, yp, sp).reshape(9)):
+            cc.value(ours, theirs, 4.5e-16, "pom00")
         lines.append("pom," + ",".join(repr(float(v)) for v in (xp, yp, sp, *m)))
+    # 3 per date, 3 per TEME case, 9 per polar-motion matrix
+    want = 3 * len(jd_inputs()) + 3 * len(teme_cases()) + 27
+    if cc.compared != want:
+        sys.exit(f"the pyerfa cross-check compared {cc.compared} values, not {want}")
     text = "\n".join(lines) + "\n"
     if "--check" in sys.argv:
         if OUT.read_text(encoding="utf-8") != text:
             sys.exit(f"{OUT} differs from the regenerated table")
-        print(f"{OUT}: {len(lines) - 2} rows match")
+        print(f"{OUT}: {len(lines) - 2} rows match ({cc.compared} pyerfa cross-checks)")
     else:
         OUT.write_text(text, encoding="utf-8")
-        print(f"wrote {OUT}: {len(lines) - 2} rows")
+        print(f"wrote {OUT}: {len(lines) - 2} rows ({cc.compared} pyerfa cross-checks)")
 
 
 if __name__ == "__main__":

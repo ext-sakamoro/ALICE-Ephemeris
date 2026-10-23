@@ -131,8 +131,14 @@ jobs:
     # the reference tables and the generated coefficient table are reproduced
     # from their sources (ERFA, CSPICE, the NAIF kernel, ERFA dtdb.c), each
     # checked by SHA-256, with the pinned tool versions
-    name: Reference tables reproduce from their sources
-    runs-on: ubuntu-latest
+    # on x86_64 and arm64: each must regenerate the committed tables byte for
+    # byte, so the tables are shown not to depend on the machine
+    name: Reference tables reproduce from their sources (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5

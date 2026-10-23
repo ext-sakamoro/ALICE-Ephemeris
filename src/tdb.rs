@@ -38,7 +38,7 @@
 //! The bound, and so the agreement with any other evaluation such as ERFA's,
 //! degrades as t⁴ outside 1950–2050 (`tests/oracle_tdb.rs`).
 
-use alice_det_math::{round64, sin64};
+use alice_det_math::{max64, min64, round64, sin64};
 
 use crate::fb1990_table::{BLOCKS, FAIRHD};
 use crate::instant::{Duration, Instant, Tdb, Tt};
@@ -137,7 +137,10 @@ impl TdbModel {
             Self::SpiceEt => spice_et(s),
             Self::Fb1990 => {
                 let t = s / 86_400.0 / 365_250.0;
-                fb1990(t.clamp(-FB1990_DOMAIN_MILLENNIA, FB1990_DOMAIN_MILLENNIA))
+                fb1990(min64(
+                    max64(t, -FB1990_DOMAIN_MILLENNIA),
+                    FB1990_DOMAIN_MILLENNIA,
+                ))
             }
         }
     }

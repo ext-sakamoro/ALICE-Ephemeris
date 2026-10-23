@@ -31,7 +31,11 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - Two-part Julian Date (`Jd2`) and exact Modified Julian Date (`Mjd`).
 - Laws with semantics identifiers (`law::ALL`).
 - Reference tables generated from ERFA and CSPICE (`scripts/gen_time_golden.py`)
-  and golden output digests checked on every CI platform and wasm32.
+  and golden output digests checked on every CI platform and wasm32. The
+  ERFA float columns are its expressions evaluated in IEEE binary64 with
+  correctly rounded sines (a compiled ERFA may fuse a·b + c), so every table
+  is reproduced bit for bit on arm64 and x86_64; pyerfa agrees within a
+  derived bound.
 - `scripts/mutants-equivalent.txt` with `scripts/mutants_equivalent_check.py`:
   the surviving mutants that cannot change a result, each with its reason;
   the check fails on an unlisted survivor, on a listed entry that no longer

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Reproduce the reference tables from their sources and compare them with the
 # committed ones: src/fb1990_table.rs from ERFA v2.0.1 dtdb.c, tests/golden/*.csv
-# from ERFA (pyerfa) and CSPICE (spiceypy) with naif0012.tls. Both generators
-# check the SHA-256 of their source file and the pinned tool versions.
+# from ERFA (its expressions in IEEE binary64, and pyerfa within a derived bound)
+# and CSPICE (spiceypy) with naif0012.tls. Both generators check the SHA-256 of
+# their source files and the pinned tool versions.
 #
 # The tools live in a virtual environment under ORACLE_VENV (default
 # ~/.cache/alice-ephemeris-oracle/venv-<hash of the requirements>), created from
@@ -23,5 +24,6 @@ fetch() {
 }
 fetch naif0012.tls https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls
 fetch dtdb.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/dtdb.c
+fetch dat.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/dat.c
 "$venv/bin/python" -I scripts/gen_fb1990_table.py "$cache/src/dtdb.c" --check
-"$venv/bin/python" -I scripts/gen_time_golden.py "$cache/src/naif0012.tls" "$cache/src/dtdb.c" --check
+"$venv/bin/python" -I scripts/gen_time_golden.py "$cache/src/naif0012.tls" "$cache/src/dtdb.c" "$cache/src/dat.c" --check

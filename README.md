@@ -101,8 +101,14 @@ None of the expected values in `tests/golden/` comes from this crate.
 `scripts/gen_time_golden.py` (versions pinned in
 `scripts/oracle-requirements.txt`) writes them from:
 
-- ERFA 2.0.1 through pyerfa: `eraDtf2d`, `eraUtctai`, `eraTaiutc`,
-  `eraD2dtf`, `eraDtdb`, `eraCal2jd`;
+- ERFA 2.0.1: `eraDtf2d`, `eraUtctai` and `eraDtdb` as their own
+  expressions evaluated in IEEE binary64 (sines correctly rounded), with
+  pyerfa run on every row and agreeing within a bound derived from the
+  arithmetic; `eraTaiutc`, `eraD2dtf` and `eraCal2jd` through pyerfa
+  (integer results). A compiled ERFA may fuse a·b + c, which changes the
+  last bits, so the tables are the same on every machine only this way:
+  `scripts/oracle_check.sh` reproduces them bit for bit on arm64 and
+  x86_64;
 - CSPICE N0067 through spiceypy with `naif0012.tls`: `unitim`;
 - exact rational arithmetic for Julian-date fractions.
 

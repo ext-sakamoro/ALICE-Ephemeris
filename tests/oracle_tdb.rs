@@ -61,10 +61,11 @@ fn fb1990_rounding_bound(t: f64) -> f64 {
 }
 
 /// The f64 series against the same series evaluated exactly (mpmath, 60
-/// digits, exact t), within the derived bound; and against ERFA eraDtdb,
-/// whose own libm / fused multiply-add rounding is on its side of the
-/// comparison: within twice the bound (ERFA's arithmetic has the same
-/// structure, so its own error obeys the same bound).
+/// digits, exact t), within the derived bound; and against eraDtdb's
+/// expression in IEEE binary64 with correctly rounded sines (the table's
+/// ERFA column; pyerfa itself agrees with it within twice the bound, checked
+/// when the table is generated): within twice the bound, since that
+/// evaluation has the same structure and obeys the same bound.
 fn check_fb1990_table(name: &str, sec_col: usize) -> (usize, f64, f64) {
     let mut n = 0;
     let (mut worst_exact, mut worst_erfa) = (0.0f64, 0.0f64);

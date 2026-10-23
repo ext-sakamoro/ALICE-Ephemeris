@@ -21,8 +21,8 @@
 use alice_ephemeris::law::{self, Law};
 use alice_ephemeris::leap::{self, SEGMENTS};
 use alice_ephemeris::tdb::{
-    fb1990_coefficients, FB1990_BLOCKS, FB1990_JPL_ADJUSTMENT, FB1990_STATED_RANGE, SPICE_EB,
-    SPICE_K, SPICE_M,
+    fb1990_coefficients, FB1990_BLOCKS, FB1990_DOMAIN_MILLENNIA, FB1990_JPL_ADJUSTMENT,
+    FB1990_STATED_RANGE, SPICE_EB, SPICE_K, SPICE_M,
 };
 use alice_ephemeris::{
     civil_from_mjd, ExpiryPolicy, Instant, Jd2, Tai, TdbModel, TimeError, Tt, UtcDateTime,
@@ -39,6 +39,10 @@ const REFERENCE_TT_INPUTS: (&str, usize) = (
     "62e2f19d71365f18bf23d04451361bdcda33ba4165837295fc5e62bcf5e6bcdb",
     9267,
 );
+const REFERENCE_FB1990_INPUTS: (&str, usize) = (
+    "a808d01f0c827e09db36da0a8bcfa6847a908bc2e76d7aed94812c7a4495c619",
+    9271,
+);
 
 /// Output digests over the reference grids (folded into the identifiers).
 const REFERENCE_UTC_TAI: &str = "74d04ebde5696215f6a07d91c342fbfa986d58836e3e0e77b337f70e190cb569";
@@ -46,7 +50,7 @@ const REFERENCE_TT_TAI: &str = "0d5b624d4b53142542751355d88d8bb5817e4298dca5ee27
 const REFERENCE_TDB_SPICE_ET: &str =
     "115f0b2aaf63ef8969a44dd0fb57840ca8be42adf07fee98837132efc782659f";
 const REFERENCE_TDB_FB1990: &str =
-    "906515b2d290c2006ddddad3a574770e1d314334f2f3fa6ac1dff5e45e47f5a6";
+    "7f041238d8c514755282d92e187d4a506484479a07616a94bdd5382671133459";
 const REFERENCE_JULIAN_DATE: &str =
     "e5c5cd9f10a2f822f294d41c5306e743a3136a4f4f4c1135a4c4fef02e2b9314";
 
@@ -54,7 +58,7 @@ const REFERENCE_JULIAN_DATE: &str =
 const TEST_UTC_TAI: &str = "8d80ebb33f6d292814013f553e652e423eef5a44c846d08dc8f8d127a18d2ba9";
 const TEST_TT_TAI: &str = "77918963f016300a054787c853bd3437878ae0b300f2ac3d5c9cd193af85bc04";
 const TEST_TDB_SPICE_ET: &str = "21aeef5e1b5b8563606c49e3d1680105ce57139608721ae4a4e35b08a88ea6f6";
-const TEST_TDB_FB1990: &str = "ec1e6e98dc425c22948b0d2c0ca28d5fcc5dd49b00153a13a2b000a2c0aca96d";
+const TEST_TDB_FB1990: &str = "131975032948ff7c5feef8126debcdc1628446a8a4e6c9a02cdc3a667a59436e";
 const TEST_JULIAN_DATE: &str = "bb7e7861ff821656bdd6a52fea9ddf067152f3e40b14348a6fe5044936bd5666";
 
 fn hex(b: &[u8]) -> String {
@@ -106,6 +110,17 @@ fn reference_tt_inputs() -> Vec<Instant<Tt>> {
         v.extend([Instant::<Tt>::new(s, k * 98_765_432_109_877 % ATTO_PER_SEC).unwrap()]);
         s += 2_000_000 + (k as i64 * 7919) % 86_400;
         k += 1;
+    }
+    v
+}
+
+/// The TT reference grid and the ends of the Fb1990 domain: ±130 Julian
+/// millennia (inside) and one second beyond (outside).
+fn reference_fb1990_inputs() -> Vec<Instant<Tt>> {
+    let mut v = reference_tt_inputs();
+    let end = 130 * 365_250 * 86_400;
+    for s in [-end - 1, -end, end, end + 1] {
+        v.extend([Instant::<Tt>::new(s, 0).unwrap()]);
     }
     v
 }
@@ -266,6 +281,7 @@ fn check(kind: &str, cases: &[Case]) {
 fn reference_grids_are_frozen() {
     let utc = reference_utc_inputs();
     let tt = reference_tt_inputs();
+    let fb = reference_fb1990_inputs();
     let got = [
         (
             "UTC_INPUTS",
@@ -278,6 +294,12 @@ fn reference_grids_are_frozen() {
             digest(&tt_input_bytes(&tt)),
             tt.len(),
             REFERENCE_TT_INPUTS,
+        ),
+        (
+            "FB1990_INPUTS",
+            digest(&tt_input_bytes(&fb)),
+            fb.len(),
+            REFERENCE_FB1990_INPUTS,
         ),
     ];
     let mut bad = Vec::new();
@@ -300,6 +322,7 @@ fn reference_grids_are_frozen() {
 fn reference_digests() {
     let utc = reference_utc_inputs();
     let tt = reference_tt_inputs();
+    let fb = reference_fb1990_inputs();
     check(
         "REFERENCE",
         &[
@@ -312,7 +335,7 @@ fn reference_digests() {
             ),
             (
                 "TDB_FB1990",
-                tdb_outputs(TdbModel::Fb1990, &tt),
+                tdb_outputs(TdbModel::Fb1990, &fb),
                 REFERENCE_TDB_FB1990,
             ),
             (
@@ -397,6 +420,7 @@ fn semantics_ids() {
     fb.extend(FB1990_JPL_ADJUSTMENT.iter().flat_map(|t| f64s(t)));
     fb.extend(FB1990_STATED_RANGE.0.to_le_bytes());
     fb.extend(FB1990_STATED_RANGE.1.to_le_bytes());
+    fb.extend(FB1990_DOMAIN_MILLENNIA.to_bits().to_le_bytes());
     fb.extend(alice_det_math::SEMANTICS_ID);
 
     let jd = alice_det_math::SEMANTICS_ID.to_vec();
@@ -413,7 +437,7 @@ fn semantics_ids() {
         (
             law::TDB_FB1990,
             fb,
-            REFERENCE_TT_INPUTS,
+            REFERENCE_FB1990_INPUTS,
             REFERENCE_TDB_FB1990,
         ),
         (

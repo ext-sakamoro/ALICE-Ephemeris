@@ -43,25 +43,23 @@ fn arithmetic_at_the_ends_of_i64_is_an_error_not_a_wrap() {
 
 #[test]
 fn tdb_at_the_ends_of_i64_is_an_error_or_a_value() {
-    for model in [TdbModel::SpiceEt, TdbModel::Fb1990] {
-        // the series is evaluated far outside any stated range: the value is
-        // finite, and the conversion either succeeds or reports OutOfRange
-        // (Fb1990's polynomial terms exceed 1 s millions of years out)
-        let big = Instant::<Tt>::new(i64::MAX, 0).unwrap();
-        assert!(model.tdb_minus_tt(big).is_finite(), "{model:?}");
-        assert!(!model.within_stated_accuracy(big));
-        let r = big.to_tdb(model);
-        assert!(
-            r.is_ok() || r == Err(TimeError::OutOfRange),
-            "{model:?}: {r:?}"
-        );
-        let small = Instant::<Tdb>::new(i64::MIN, 0).unwrap();
-        let r = small.to_tt(model);
-        assert!(
-            r.is_ok() || r == Err(TimeError::OutOfRange),
-            "{model:?}: {r:?}"
-        );
-    }
+    // SpiceEt evaluates everywhere: the value is finite, and the conversion
+    // either succeeds or reports OutOfRange (the instant itself overflows)
+    let big = Instant::<Tt>::new(i64::MAX, 0).unwrap();
+    let small = Instant::<Tdb>::new(i64::MIN, 0).unwrap();
+    let model = TdbModel::SpiceEt;
+    assert!(model.tdb_minus_tt(big).is_finite());
+    assert!(!model.within_stated_accuracy(big));
+    let r = big.to_tdb(model);
+    assert!(r.is_ok() || r == Err(TimeError::OutOfRange), "{r:?}");
+    let r = small.to_tt(model);
+    assert!(r.is_ok() || r == Err(TimeError::OutOfRange), "{r:?}");
+    // Fb1990 is outside its domain there: NaN, and both conversions fail
+    let model = TdbModel::Fb1990;
+    assert!(model.tdb_minus_tt(big).is_nan());
+    assert!(!model.within_stated_accuracy(big));
+    assert_eq!(big.to_tdb(model), Err(TimeError::OutOfRange));
+    assert_eq!(small.to_tt(model), Err(TimeError::OutOfRange));
     let tt = Instant::<Tt>::J2000;
     assert!(TdbModel::Fb1990.within_stated_accuracy(tt));
     assert!(!TdbModel::SpiceEt.within_stated_accuracy(tt));

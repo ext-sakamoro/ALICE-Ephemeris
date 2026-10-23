@@ -41,6 +41,7 @@ pub mod eop;
 mod error;
 mod fb1990_table;
 pub mod frames;
+mod iau2006_table;
 mod instant;
 mod jd;
 pub mod law;

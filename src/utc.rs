@@ -319,6 +319,21 @@ mod tests {
     }
 
     #[test]
+    fn an_instant_exactly_at_the_start_of_the_next_day_is_an_error() {
+        // days of 86399 s: two days in, the estimate is one day early and the
+        // instant is exactly the start of the next day (it belongs to it)
+        let seg = row(-10_000_000);
+        let t = day_start_tai(&seg, seg.start_mjd + 2);
+        assert_eq!(
+            t - start_tai(&seg),
+            2 * (DAY_ATTO - 1_000_000_000_000_000_000)
+        );
+        assert_eq!(day_of(&seg, i64::MAX, t), Err(TimeError::OutOfRange));
+        // one attosecond earlier the estimate is right
+        assert_eq!(day_of(&seg, i64::MAX, t - 1), Ok(seg.start_mjd + 1));
+    }
+
+    #[test]
     fn the_day_found_holds_the_instant() {
         // 1961 drift row and a constant row: the first and last instant of a day
         for seg in [

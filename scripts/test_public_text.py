@@ -152,6 +152,21 @@ class Planted(unittest.TestCase):
         self.assertIn(f"commit {head[:12]} message:1:", p.stdout)
         self.assertIn("1 findings in 1 commits", p.stdout)
 
+    def test_all_reads_the_root_commit(self) -> None:
+        # a base commit is outside its range, so only `all` can read the first commit
+        self.commit(f"see {LINK} for the reason")
+        root = git("rev-parse", "HEAD", cwd=self.r)
+        (self.r / "README.md").write_text("A clean file, changed.\n")
+        self.commit("a clean message")
+        for args in (["all"], []):
+            with self.subTest(args=args):
+                # no base and no origin/main: the whole history
+                p = subprocess.run(["bash", "scripts/public_text.sh", *args], cwd=self.r, capture_output=True,
+                                   text=True, env=self.env, timeout=300)
+                self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+                self.assertIn(f"commit {root[:12]} message:1:", p.stdout)
+                self.assertIn("1 findings in 2 commits", p.stdout)
+
     def test_a_clean_commit_range_is_clean(self) -> None:
         self.commit("base")
         (self.r / "README.md").write_text("A clean file, changed.\n")

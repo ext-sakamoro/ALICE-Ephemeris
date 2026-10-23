@@ -17,11 +17,16 @@ project adheres to [Semantic Versioning](https://semver.org/).
   `Provenance` for dates past it.
 - TAI ↔ TT (TT = TAI + 32.184 s).
 - TT ↔ TDB with two models, `TdbModel::SpiceEt` and `TdbModel::Fb1990`;
-  Fb1990 is defined within ±130,000 Julian years of J2000 TT
-  (`tdb::FB1990_DOMAIN_MILLENNIA`, where |TDB − TT| < 1 s) and returns
-  NaN / `TimeError::OutOfRange` outside without evaluating the series.
+  Fb1990 is defined within ±110,000 Julian years of J2000 TT
+  (`tdb::FB1990_DOMAIN_MILLENNIA`) and returns NaN /
+  `TimeError::OutOfRange` outside without evaluating the series. Inside it
+  |TDB − TT| ≤ 0.920 s is proven from the coefficients (each sine at most 1,
+  plus the f64 rounding bound), checked by a test; that bound reaches 1 s
+  before 115,000 years, so a wider domain such as 120,000 years (where
+  ERFA's value is still below 1 s) cannot be proven this way and is not used.
   The domain is part of the `TDB_FB1990` Law: its data and its reference
-  grid (which includes both ends of the domain and one second beyond).
+  grid (which includes both ends of the domain, half a second inside, and
+  half a second and one second beyond).
   No earlier identifier was released, so no old → new entry is listed.
 - Two-part Julian Date (`Jd2`) and exact Modified Julian Date (`Mjd`).
 - Laws with semantics identifiers (`law::ALL`).
@@ -31,3 +36,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
   the surviving mutants that cannot change a result, each with its reason;
   the check fails on an unlisted survivor, on a listed entry that no longer
   survives, and on an empty list, and reports timeouts as unverified.
+- `scripts/public_text.sh`: the public text check on every tracked file and on
+  the commits since the previous head; with no previous head (the first
+  commit range of a branch) it reads the whole history, the first commit
+  included.

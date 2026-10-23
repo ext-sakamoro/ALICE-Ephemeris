@@ -179,14 +179,49 @@ fn tdb_round_trips_within_the_documented_bound() {
     println!("round trips: {exact} of {n} within 1 as");
 }
 
+/// An upper bound on |TDB − TT| from Fb1990 for every |t| ≤ `t_max`, as the
+/// crate computes it: each sine is at most 1 in magnitude, so the series is
+/// at most Σ_k W_k·t_max^k (W_k = Σ|a| of the T^k block) plus the JPL
+/// adjustment terms, and the f64 value is within the rounding bound of that.
+/// Both parts grow with |t|, so their value at `t_max` covers the domain.
+fn fb1990_magnitude_bound(t_max: f64) -> f64 {
+    let coef = fb1990_coefficients();
+    let mut series = 0.0;
+    for k in 0..5 {
+        let w: f64 = coef[FB1990_BLOCKS[k]..FB1990_BLOCKS[k + 1]]
+            .iter()
+            .map(|c| c[0].abs())
+            .sum();
+        series += w * alice_det_math::powf64(t_max, k as f64);
+    }
+    for [a, _, _] in &FB1990_JPL_ADJUSTMENT[..4] {
+        series += a.abs();
+    }
+    series += FB1990_JPL_ADJUSTMENT[4][0].abs() * t_max * t_max;
+    series + fb1990_rounding_bound(t_max)
+}
+
+#[test]
+fn fb1990_stays_below_one_second_throughout_its_domain() {
+    // a proof, not a sample: no instant of the domain can reach 1 s
+    let at_end = fb1990_magnitude_bound(FB1990_DOMAIN_MILLENNIA);
+    println!("Fb1990 |TDB − TT| ≤ {at_end:.4} s within the domain");
+    assert!(at_end < 1.0, "{at_end}");
+    // the bound is not loose by much: ERFA itself reaches 1 s near
+    // −123,365 years, and the bound reaches 1 s before 115,000 years, so a
+    // wider domain could not be proven this way
+    assert!(fb1990_magnitude_bound(115.0) > 1.0);
+    assert!(fb1990_magnitude_bound(130.0) > 1.0);
+}
+
 #[test]
 fn fb1990_domain_ends_before_erfa_reaches_one_second() {
     // ±200,000 years, far outside 1950–2050 where the series means anything.
-    // Inside the domain (±130,000 years) the f64 value stays within the
+    // Inside the domain (±110,000 years) the f64 value stays within the
     // derived bound of the exact series (which grows as t⁴), ERFA's
-    // |TDB − TT| is below 1 s (it first reaches 1 s near −131,600 and
-    // +147,200 years) and the conversion succeeds; outside it the conversion
-    // is OutOfRange, whatever ERFA's value
+    // |TDB − TT| is below 1 s (scanned at 0.005-year steps, it first reaches
+    // 1 s at −123,365 and +126,978 years) and the conversion succeeds;
+    // outside it the conversion is OutOfRange, whatever ERFA's value
     let (n, we, wr) = check_fb1990_table("tdb_fb1990_far.csv", 1);
     println!("Fb1990 far: {n} rows inside the domain, worst |ours-exact|/bound {we:.3}, |ours-ERFA|/bound {wr:.3}");
     let (mut inside, mut outside, mut outside_erfa_below_1) = (0, 0, 0);

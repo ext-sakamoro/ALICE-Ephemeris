@@ -1,0 +1,116 @@
+name: Security & Hygiene
+
+on:
+  push:
+    branches: [main, 'ci/**']
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "5"
+
+jobs:
+  audit:
+    name: cargo audit (RustSec CVE scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: cargo audit
+        run: cargo audit --deny yanked
+
+  deny:
+    name: cargo-deny (license + advisories + bans + sources)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny
+      - name: cargo deny (all features)
+        run: cargo deny --all-features check all
+
+  unused-deps:
+    name: cargo-machete (unused dependencies)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: bnjbvr/cargo-machete@main
+
+  stub-guard:
+    name: Stub / dbg / libm guard (grep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Detect todo! / unimplemented! / panic!(STUB) / dbg!
+        run: |
+          set -eo pipefail
+          hits=$(grep -rnE 'todo!\(|unimplemented!\(|panic!\([^)]*STUB|dbg!\(' src/ --include="*.rs" || true)
+          if [ -n "$hits" ]; then
+            echo "stub or debug macro in src/:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "no todo! / unimplemented! / STUB panic / dbg! in src/"
+      # the crate's promise: no platform libm call and no fma in src/ (clippy.toml
+      # enforces the same on the method paths; this catches a call clippy cannot
+      # resolve, e.g. through a macro). Counts the files it scanned and fails at 0.
+      - name: Detect platform libm / mul_add calls in src/
+        run: |
+          set -eo pipefail
+          n=$(find src -name '*.rs' | wc -l)
+          if [ "$n" -eq 0 ]; then echo "scanned 0 files"; exit 1; fi
+          hits=$(grep -rnE '\.(sin|cos|tan|asin|acos|atan|atan2|sin_cos|sinh|cosh|tanh|exp|exp2|ln|log|log2|log10|powf|powi|cbrt|hypot|sqrt|mul_add)\(' src/ --include="*.rs" \
+            | grep -vE '^\S+:[0-9]+:\s*//' || true)
+          if [ -n "$hits" ]; then
+            echo "platform libm / mul_add call in src/:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "scanned $n files: no platform libm / mul_add call"
+
+  coverage:
+    name: Coverage (cargo-llvm-cov, informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Coverage summary
+        run: cargo llvm-cov --summary-only

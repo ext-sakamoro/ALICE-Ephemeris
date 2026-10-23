@@ -1,0 +1,65 @@
+name: Fuzz
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: 'Per-target fuzz duration (seconds)'
+        required: false
+        default: '60'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: Fuzz — ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        target: [fuzz_utc_round_trip, fuzz_tai_to_utc, fuzz_tdb_and_jd]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      # the build is blocking; only the run itself may be marked failed without
+      # failing the job, and then it uploads the crash and warns
+      - name: Build fuzz target
+        run: cargo +nightly fuzz build ${{ matrix.target }}
+      - name: Run fuzz target
+        id: run
+        continue-on-error: true
+        env:
+          DURATION: ${{ inputs.duration_seconds || '60' }}
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time="$DURATION"
+      - name: Upload crash artifacts
+        if: steps.run.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+      - name: Report a crash
+        if: steps.run.outcome == 'failure'
+        run: echo "::warning::fuzz target ${{ matrix.target }} found a crash (artifact uploaded)"

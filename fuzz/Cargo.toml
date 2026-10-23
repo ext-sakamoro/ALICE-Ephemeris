@@ -1,0 +1,37 @@
+[package]
+name = "alice-ephemeris-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "LicenseRef-Proprietary"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+alice-ephemeris = { path = ".." }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzz_utc_round_trip"
+path = "fuzz_targets/fuzz_utc_round_trip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_tai_to_utc"
+path = "fuzz_targets/fuzz_tai_to_utc.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_tdb_and_jd"
+path = "fuzz_targets/fuzz_tdb_and_jd.rs"
+test = false
+doc = false
+bench = false

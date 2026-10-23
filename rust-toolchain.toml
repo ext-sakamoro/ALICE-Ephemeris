@@ -1,0 +1,8 @@
+# Rust toolchain pin (the clippy lint set changes between releases)
+# `targets`: the bare-metal target of the CI `no_std` job and the wasm target of
+# the wasm job, listed here so rustup installs them for the pinned toolchain
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+targets = ["thumbv7em-none-eabihf", "wasm32-wasip1"]
+profile = "minimal"

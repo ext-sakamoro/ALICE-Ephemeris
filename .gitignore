@@ -1,0 +1,18 @@
+# Build
+target/
+# cargo-fuzz build output (the root `target/` pattern does not cover it)
+fuzz/target/
+fuzz/artifacts/
+fuzz/corpus/
+mutants.out/
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Python bytecode (scripts/test_docs_lint.py imports scripts/docs_lint.py)
+__pycache__/

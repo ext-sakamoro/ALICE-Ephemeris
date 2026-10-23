@@ -1,0 +1,4 @@
+# the generated coefficient table is checked byte for byte against its source
+# (scripts/gen_fb1990_table.py --check) and value by value against ERFA
+exclude_globs = ["src/fb1990_table.rs"]
+timeout_multiplier = 3.0

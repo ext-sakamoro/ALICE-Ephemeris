@@ -1,0 +1,36 @@
+[package]
+name = "alice-ephemeris"
+version = "0.1.0"
+edition = "2021"
+# MSRV-aware dependency resolution (cargo 1.84+)
+resolver = "3"
+rust-version = "1.85"
+authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
+description = "Deterministic astronomical time scales (UTC, TAI, TT, TDB), Julian dates and leap seconds, bit-identical on every platform — no_std"
+license = "LicenseRef-Proprietary"
+# proprietary: not published to crates.io
+publish = false
+repository = "https://github.com/ext-sakamoro/ALICE-Ephemeris"
+readme = "README.md"
+keywords = ["astronomy", "time", "leap-seconds", "tdb", "deterministic"]
+categories = ["science", "date-and-time", "no-std"]
+exclude = ["/.github", "/scripts", "/deny.toml"]
+
+[dependencies]
+# every f64 transcendental goes through alice-det-math (bit-identical on all targets)
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "9252dd22b0aae3110687097836808572a5323947", version = "0.5.1", default-features = false }
+
+[features]
+default = ["std"]
+# `std`: alice-det-math's hardware sqrt (IEEE correctly rounded, so the results
+# are bit-identical without it). This crate itself uses only `core`.
+std = ["alice-det-math/std"]
+
+[dev-dependencies]
+sha2 = { version = "0.10", default-features = false }
+sha1 = { version = "0.10", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+

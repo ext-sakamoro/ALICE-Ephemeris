@@ -1,0 +1,113 @@
+# ALICE-Ephemeris
+
+Deterministic astronomical time scales for Rust: UTC, TAI, TT and TDB, leap
+seconds and Julian dates. Every conversion returns the same bits on every
+target (Linux, macOS, Windows, wasm32), and is checked against independent
+references (ERFA and NASA NAIF SPICE).
+
+It is the time layer for ephemerides and reference frames that follow.
+
+**Not for:** UT1 and Earth orientation (needs IERS EOP data, not included),
+topocentric TDB terms (≤ 2 µs), TCG / TCB, local time zones, or reading the
+system clock. Planetary positions and frames are not part of this release.
+
+## What it does
+
+| Conversion | How | Agreement with the reference |
+|---|---|---|
+| UTC ↔ TAI | TAI − UTC table from 1960-01-01 (1960–1971 drift expressions, then every leap second, 23:59:60) in exact integer attoseconds | ERFA `eraUtctai` / `eraTaiutc` to its own rounding (≤ 5 × 10⁻¹¹ s); integer offsets from 1972 exact |
+| TAI ↔ TT | TT = TAI + 32.184 s | exact |
+| TT ↔ TDB, `SpiceEt` | SPICE `DELTET` formula (`naif0012.tls`) | CSPICE `unitim` within 2 ulp of its `f64` result |
+| TT ↔ TDB, `Fb1990` | Fairhead & Bretagnon (1990), 787 terms, geocentric | ERFA `eraDtdb` within 10⁻¹⁵ s; model accuracy ±3 ns for 1950–2050 (as stated by ERFA) |
+| Instant ↔ JD / MJD | two-part JD (`jd1` + `jd2`) for interoperability, exact MJD parts | exact rational fraction within 1 ulp |
+
+```rust
+use alice_ephemeris::{ExpiryPolicy, TdbModel, UtcDateTime};
+
+let utc = UtcDateTime::new(2016, 12, 31, 23, 59, 60, 0)?; // a leap second
+let tai = utc.to_tai(ExpiryPolicy::Strict)?.value;
+let tt = tai.to_tt()?;
+let tdb = tt.to_tdb(TdbModel::Fb1990)?; // Instant<Tdb>
+assert_eq!(UtcDateTime::from_tai(tai, ExpiryPolicy::Strict)?.value, utc);
+assert!(TdbModel::Fb1990.tdb_minus_tt(tt).abs() < 2e-3);
+assert_eq!(tdb.to_tt(TdbModel::Fb1990)?, tt);
+# Ok::<(), alice_ephemeris::TimeError>(())
+```
+
+## Representation and guaranteed ranges
+
+- An `Instant<S>` (`S` = `Tai`, `Tt` or `Tdb`) is `i64` seconds since J2000.0
+  (2000-01-01 12:00:00 on that scale) plus `u64` attoseconds. Range ±2⁶³ s
+  (about ±2.9 × 10¹¹ years) at a resolution of exactly 10⁻¹⁸ s. Addition and
+  subtraction are integer, never round, and return `TimeError::OutOfRange`
+  instead of wrapping.
+- UTC is a label of TAI, held as a civil date and time (`UtcDateTime`).
+  Defined from **1960-01-01T00:00:00 UTC** up to, not including, the
+  leap-second table's expiry, **2027-06-28T00:00:00 UTC**. Before 1960 every
+  conversion returns `TimeError::BeforeUtc`.
+- TDB − TT is evaluated in `f64` for any instant. `TdbModel::Fb1990` carries
+  ERFA's ±3 ns statement only for 1950–2050 TT
+  (`TdbModel::within_stated_accuracy`); the two models differ by at most
+  38 µs over that period (measured).
+- `to_seconds_f64` and `to_jd2` are within 1 ulp of the exact value;
+  `from_jd2` is as precise as its `f64` inputs (≈ 10 ps for a day fraction).
+
+## Leap-second table expiry
+
+The table is the IANA `leap-seconds.list` (updated through IERS Bulletin C,
+file SHA-1 checked by the tests), which expires on **2027-06-28**. On and after
+that date a leap second may have been announced that this version does not
+know:
+
+- `ExpiryPolicy::Strict` (default) returns `TimeError::LeapTableExpired`.
+- `ExpiryPolicy::AssumeNoNewLeapSeconds` keeps TAI − UTC = 37 s and marks the
+  result `Provenance::AssumedNoNewLeapSeconds`.
+
+A new table is a new release with a new semantics identifier for UTC ↔ TAI.
+
+## Determinism
+
+<!-- claim-test: golden_digests -->
+
+The only `f64` arithmetic is the TDB − TT series and the Julian-date
+fraction. Every transcendental function there is `alice-det-math`'s (IEEE
+basic operations only); `clippy.toml` forbids the platform `f64::sin` and
+friends, `mul_add`, the wall clock, threads and hash-ordered collections.
+`tests/law_ids.rs` hashes the outputs of every conversion over fixed grids;
+CI asserts the same hashes on Linux (x86_64, aarch64), macOS (aarch64,
+x86_64), Windows and wasm32-wasip1.
+
+## MSRV
+
+Rust 1.85 (`rust-version` in `Cargo.toml`), checked by the CI `msrv` job.
+
+## Laws
+
+Each conversion is a Law with a 32-byte semantics identifier (`law::ALL`):
+`utc-tai`, `tt-tai`, `tdb-spice-et`, `tdb-fb1990`, `julian-date`. The
+identifier is the SHA-256 of the Law's name, tables and constants (as bit
+patterns), the `alice-det-math` semantics identifier where it is used, and
+the golden digest of its outputs, so a value recorded with its identifier
+says which Law produced it.
+
+## References and test oracles
+
+None of the expected values in `tests/golden/` comes from this crate.
+`scripts/gen_time_golden.py` (versions pinned in
+`scripts/oracle-requirements.txt`) writes them from:
+
+- ERFA 2.0.1 through pyerfa: `eraDtf2d`, `eraUtctai`, `eraTaiutc`,
+  `eraD2dtf`, `eraDtdb`, `eraCal2jd`;
+- CSPICE N0067 through spiceypy with `naif0012.tls`: `unitim`;
+- exact rational arithmetic for Julian-date fractions.
+
+The 1960–1971 TAI − UTC rows are those of ERFA `dat.c` (USNO
+`tai-utc.dat`); the Fairhead & Bretagnon coefficients are generated from
+ERFA `dtdb.c` by `scripts/gen_fb1990_table.py` (source file SHA-256 pinned).
+
+## License
+
+Copyright (c) 2026 Moroya Sakamoto. All rights reserved; no license is
+granted (see `LICENSE`). Third-party components keep their own licenses
+(ERFA BSD-3-Clause, alice-det-math Apache-2.0, the leap-second file public
+domain); see `THIRD-PARTY-NOTICES`.

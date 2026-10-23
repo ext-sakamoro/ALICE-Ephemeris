@@ -1,0 +1,147 @@
+name: CI
+
+# Every step here is mirrored in scripts/preflight.sh (generated from the
+# workflows, run before `git push`).
+#
+# The crate promises the same bits on every target, so the test matrix is the
+# product: tests/law_ids.rs pins SHA-256 digests of every conversion's outputs
+# and each lane (5 native platforms, debug and release, and wasm32) must
+# reproduce them.
+
+on:
+  push:
+    # ci/**: the same checks on a branch before it is fast-forwarded to main
+    branches: [main, 'ci/**']
+  pull_request:
+    branches: [main]
+
+# on main each commit has a group of its own and a run there is never
+# cancelled; a newer push cancels an older run only off main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # aarch64-apple-darwin, x86_64-apple-darwin, x86_64 / aarch64 linux-gnu, x86_64 windows-msvc
+        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test (debug)
+        run: cargo test --locked
+      - name: Test (release)
+        run: cargo test --locked --release
+      # without std: alice-det-math's software sqrt must give the same digests
+      - name: Test (no default features)
+        run: cargo test --locked --no-default-features
+
+  wasm:
+    name: Test (wasm32-wasip1 via wasmtime)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - name: Ensure wasm32-wasip1 rust-std is installed
+        run: rustup target add wasm32-wasip1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm-wasip1
+      - name: Install wasmtime
+        uses: bytecodealliance/actions/wasmtime/setup@v1
+      - name: Every integration test under wasmtime (debug, then release)
+        run: |
+          scripts/run_wasm_tests.sh
+          scripts/run_wasm_tests.sh --release
+
+  clippy:
+    name: Clippy and rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+      # clippy.toml forbids the platform f64 transcendentals, mul_add, the wall
+      # clock, threads and hash-ordered collections
+      - name: clippy (all targets)
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: clippy (no_std lib)
+        run: cargo clippy --locked --lib --no-default-features -- -D warnings
+      - name: Doc (warnings are errors)
+        run: RUSTDOCFLAGS="-Dwarnings" cargo doc --locked --lib --no-deps
+
+  no-std:
+    name: no_std (rlib, thumbv7em-none-eabihf)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Ensure thumbv7em-none-eabihf rust-std is installed
+        run: rustup target add thumbv7em-none-eabihf
+      - uses: Swatinem/rust-cache@v2
+      - name: Build rlib for a target without std
+        run: cargo rustc --locked --lib --no-default-features --crate-type rlib --target thumbv7em-none-eabihf
+
+  msrv:
+    name: MSRV (rust-version = 1.85)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install MSRV toolchain
+        uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      # `rust-version` is only true if this compiles; bump both together
+      - name: cargo check on MSRV
+        run: |
+          cargo +1.85 check --lib --locked
+          cargo +1.85 check --lib --locked --no-default-features
+
+  oracle:
+    # the reference tables and the generated coefficient table are reproduced
+    # from their sources (ERFA, CSPICE, the NAIF kernel, ERFA dtdb.c), each
+    # checked by SHA-256, with the pinned tool versions
+    name: Reference tables reproduce from their sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      # creates the pinned virtual environment, fetches the sources (each
+      # checked by SHA-256 in the generators) and compares the outputs
+      - name: Reference tables reproduce (src/fb1990_table.rs, tests/golden)
+        run: scripts/oracle_check.sh

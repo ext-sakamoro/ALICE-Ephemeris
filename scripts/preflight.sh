@@ -1,0 +1,313 @@
+#!/usr/bin/env bash
+# scripts/preflight.sh — local reproduction of the CI gates before `git push`.
+# Every command is the one CI runs. A step this file does not cover is a step
+# that can only fail remotely — when a workflow changes, regenerate this file
+# in the same commit (checks no workflow runs go in scripts/preflight.local.sh).
+# Run `--quick` before every push.
+#
+# usage: scripts/preflight.sh [--quick]   (--quick skips the test / bench suites)
+# generator rev 6b6e5b67702f00636f3dd23b6b6691c24b1420b9
+# local steps: scripts/preflight.local.sh 0df1f6765813af815146174bba77b43244de02e9
+set -euo pipefail
+cd "$(dirname "$0")/.."
+# --- heavy slot (begin) ---
+# one heavy run at a time on this machine: a lock the kernel holds (flock on $ALICE_HEAVY_SLOT_DIR/lock, default
+# $HOME/.cache/alice-heavy-slot) for as long as the holder lives. A small keeper process (perl) takes it and exits
+# within a second of the holder's death, so a killed holder frees the slot and no child of the holder keeps it.
+# `info` only names the holder for the waiting line. A wait past ALICE_HEAVY_SLOT_TIMEOUT seconds (default 7200)
+# fails; the holder's own nested runs (ALICE_HEAVY_SLOT_HELD) run inside it.
+heavy_slot_dir() { printf '%s\n' "${ALICE_HEAVY_SLOT_DIR:-$HOME/.cache/alice-heavy-slot}"; }
+heavy_slot_acquire() {
+  local label=$1 tool=$2 d line info err limit="${ALICE_HEAVY_SLOT_TIMEOUT:-7200}"
+  d=$(heavy_slot_dir)
+  if [ -n "${ALICE_HEAVY_SLOT_HELD:-}" ] && [ "$(sed -n 1p "$d/info" 2>/dev/null)" = "$ALICE_HEAVY_SLOT_HELD" ] \
+     && kill -0 "$ALICE_HEAVY_SLOT_HELD" 2>/dev/null; then
+    return 0
+  fi
+  if ! err=$(mkdir -p "$d" 2>&1) || ! err=$({ : >> "$d/lock"; } 2>&1); then
+    echo "heavy slot: cannot create $d: ${err:-not writable}" >&2
+    return 1
+  fi
+  exec 8< <(exec perl -MFcntl=:flock -e '
+    my ($file, $limit) = @ARGV; my $parent = getppid(); $| = 1;
+    open(my $fh, ">>", $file) or do { print "error $!\n"; exit 2 };
+    print "pid $$\n";
+    my $t = 0;
+    until (flock($fh, LOCK_EX | LOCK_NB)) {
+      if ($t >= $limit) { print "timeout\n"; exit 1 }
+      print "wait $t\n" if $t % 30 == 0;
+      sleep 1; $t++;
+      exit 3 if getppid() != $parent;
+    }
+    print "held\n"; close(STDOUT);
+    sleep 1 while getppid() == $parent;
+  ' "$d/lock" "$limit")
+  while IFS= read -r line <&8; do
+    case "$line" in
+      "pid "*) HEAVY_SLOT_KEEPER=${line#pid } ;;
+      "wait "*)
+        info=$(cat "$d/info" 2>/dev/null || true)
+        echo "heavy slot: waiting for $(printf '%s\n' "$info" | sed -n 3p) pid $(printf '%s\n' "$info" | sed -n 1p) ($(printf '%s\n' "$info" | sed -n 4p))" >&2
+        ;;
+      held)
+        exec 8<&-
+        printf '%s\n%s\n%s\n%s\n' "$$" "$(date +%s)" "$label" "$tool" > "$d/info"
+        ALICE_HEAVY_SLOT_HELD=$$
+        export ALICE_HEAVY_SLOT_HELD
+        return 0
+        ;;
+      timeout)
+        exec 8<&-
+        info=$(cat "$d/info" 2>/dev/null || true)
+        echo "heavy slot: waited ${limit}s for $(printf '%s\n' "$info" | sed -n 3p) pid $(printf '%s\n' "$info" | sed -n 1p); giving up (ALICE_HEAVY_SLOT_TIMEOUT=$limit)" >&2
+        return 1
+        ;;
+      "error "*)
+        exec 8<&-
+        echo "heavy slot: cannot open $d/lock: ${line#error }" >&2
+        return 1
+        ;;
+    esac
+  done
+  exec 8<&-
+  echo "heavy slot: the lock keeper stopped (is perl on PATH?)" >&2
+  return 1
+}
+heavy_slot_release() {
+  local d
+  d=$(heavy_slot_dir)
+  if [ "${ALICE_HEAVY_SLOT_HELD:-}" = "$$" ] && [ -n "${HEAVY_SLOT_KEEPER:-}" ]; then
+    # the info first: once the keeper is gone the next holder writes its own
+    rm -f "$d/info"
+    kill "$HEAVY_SLOT_KEEPER" 2>/dev/null || true
+    HEAVY_SLOT_KEEPER=
+  fi
+}
+# memory: `heavy_slot_watch <pid> &` sums the RSS of that process and its descendants about once a second
+# (ALICE_HEAVY_SLOT_RSS_POLL) and past ALICE_HEAVY_SLOT_RSS_CAP_MIB (default 8192 = 8 GiB) kills the tree (itself
+# aside) and prints `[heavy-slot] RSS cap <N>GiB exceeded by <pid> <cmd> (tree <M> MiB)`; it returns once the
+# process is gone. A time limit does not bound memory (a test that loops while pushing fills the machine inside
+# its timeout), this does. A `ps` that cannot list the tree turns the cap off with a note, not silently.
+heavy_slot_cap_ok() {
+  case "${ALICE_HEAVY_SLOT_RSS_CAP_MIB:-8192}" in
+    '' | *[!0-9]* | 0) echo "heavy slot: ALICE_HEAVY_SLOT_RSS_CAP_MIB must be a positive integer" >&2; return 2 ;;
+  esac
+}
+# "<pid> <rss KiB> <command>" for the process $1 and its descendants, leaving out $2 and its descendants
+heavy_slot_tree() {
+  ps -A -o pid=,ppid=,rss=,comm= | awk -v root="$1" -v skip="${2:-}" '
+    { pid[NR] = $1; ppid[NR] = $2; rss[NR] = $3; $1 = $2 = $3 = ""; cmd[NR] = substr($0, 4) }
+    END {
+      in_tree[root] = 1; grew = 1
+      while (grew) {
+        grew = 0
+        for (i = 1; i <= NR; i++)
+          if (!(pid[i] in in_tree) && pid[i] != skip && (ppid[i] in in_tree)) { in_tree[pid[i]] = 1; grew = 1 }
+      }
+      for (i = 1; i <= NR; i++) if (pid[i] in in_tree) print pid[i], rss[i], cmd[i]
+    }'
+}
+# whether $1 runs (a zombie has ended: a watcher started by the process it watches outlives it until reaped)
+heavy_slot_alive() {
+  local st
+  st=$(ps -o stat= -p "$1" 2>/dev/null) || return 1
+  case "$st" in '' | *Z*) return 1 ;; esac
+}
+heavy_slot_watch() {
+  local root=$1 cap="${ALICE_HEAVY_SLOT_RSS_CAP_MIB:-8192}" poll="${ALICE_HEAVY_SLOT_RSS_POLL:-1}" self tree sum \
+    top peak=0 samples=0 noted=0
+  self=$(exec sh -c 'echo "$PPID"')
+  if kill -0 "$root" 2>/dev/null && ! heavy_slot_alive "$root"; then
+    echo "[heavy-slot] note: ps does not show pid $root here, so the memory cap is off" >&2
+    return 0
+  fi
+  while heavy_slot_alive "$root"; do
+    tree=$(heavy_slot_tree "$root" "$self" 2>/dev/null) || tree=""
+    if [ -z "$tree" ]; then
+      if [ "$noted" = 0 ] && heavy_slot_alive "$root"; then
+        echo "[heavy-slot] note: ps does not list pid $root here, so the memory cap is off" >&2
+        noted=1
+      fi
+    else
+      sum=$(printf '%s\n' "$tree" | awk '{ s += $2 } END { printf "%d", s / 1024 }')
+      samples=$((samples + 1))
+      if [ "$sum" -gt "$peak" ]; then peak=$sum; fi
+      if [ "$sum" -gt "$cap" ]; then
+        top=$(printf '%s\n' "$tree" | sort -k2,2nr | head -1)
+        # shellcheck disable=SC2046 # one pid per word
+        kill -9 $(printf '%s\n' "$tree" | cut -d" " -f1) 2>/dev/null || true
+        echo "[heavy-slot] RSS cap $(awk -v c="$cap" 'BEGIN { printf "%g", c / 1024 }')GiB exceeded by ${top%% *} $(printf '%s\n' "$top" | cut -d" " -f3-) (tree $sum MiB)" >&2
+        return 137
+      fi
+    fi
+    sleep "$poll"
+  done
+  if [ "${ALICE_HEAVY_SLOT_RSS_REPORT:-}" = 1 ]; then echo "[heavy-slot] RSS peak $peak MiB over $samples samples" >&2; fi
+  return 0
+}
+# --- heavy slot (end) ---
+heavy_slot_acquire "$(basename "$PWD")" preflight || exit 1
+trap heavy_slot_release EXIT
+heavy_slot_cap_ok || exit 2
+heavy_slot_watch "$$" >/dev/null &
+
+quick=0
+[[ "${1:-}" == "--quick" ]] && quick=1
+
+step() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
+# `cargo clippy` reuses fresh `cargo check` artifacts and then lints nothing;
+# touching the crate roots invalidates only this repo's fingerprints.
+relint() { git ls-files | grep -E '(^|/)src/(lib|main)\.rs$' | xargs -r touch; }
+need() { command -v "$1" >/dev/null 2>&1 || { echo "missing tool: $1 ($2)" >&2; exit 1; }; }
+has_toolchain() { rustup toolchain list | grep -q "^$1"; }
+
+# Steps CI runs that this file cannot reproduce locally (they can only fail remotely):
+#   - ci.yml:wasm:Ensure wasm32-wasip1 rust-std is installed (no cargo / grep)
+#   - ci.yml:wasm: uses bytecodealliance/actions/wasmtime/setup@v1 (an action this file cannot run)
+#   - ci.yml:no-std:Ensure thumbv7em-none-eabihf rust-std is installed (no cargo / grep)
+#   - ci.yml:oracle: uses actions/setup-python@v6 (an action this file cannot run)
+#   - security-audit.yml:audit:Install cargo-audit (needs network / runner-only)
+#   - security-audit.yml:deny:Install cargo-deny (needs network / runner-only)
+#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_utc_round_trip] (needs network / runner-only)
+#   - fuzz.yml:fuzz:Run fuzz target [target=fuzz_utc_round_trip] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
+#   - fuzz.yml:fuzz:Report a crash [target=fuzz_utc_round_trip] (no cargo / grep)
+#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_tai_to_utc] (needs network / runner-only)
+#   - fuzz.yml:fuzz:Run fuzz target [target=fuzz_tai_to_utc] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
+#   - fuzz.yml:fuzz:Report a crash [target=fuzz_tai_to_utc] (no cargo / grep)
+#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_tdb_and_jd] (needs network / runner-only)
+#   - fuzz.yml:fuzz:Run fuzz target [target=fuzz_tdb_and_jd] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
+#   - fuzz.yml:fuzz:Report a crash [target=fuzz_tdb_and_jd] (no cargo / grep)
+
+need cargo-audit "cargo install cargo-audit --locked"
+need cargo-deny "cargo install cargo-deny --locked"
+need cargo-machete "cargo install cargo-machete --locked"
+has_toolchain 1.85 || { echo "missing toolchain 1.85 (rustup toolchain install 1.85)" >&2; exit 1; }
+
+step "ci.yml / wasm: Every integration test under wasmtime (debug, then release)"
+(
+  export CARGO_TERM_COLOR="always"
+  scripts/run_wasm_tests.sh
+  scripts/run_wasm_tests.sh --release
+)
+
+step "ci.yml / clippy: rustfmt"
+( export CARGO_TERM_COLOR="always"; cargo fmt --all -- --check )
+
+step "ci.yml / clippy: clippy (all targets)"
+relint
+( export CARGO_TERM_COLOR="always"; cargo clippy --locked --all-targets -- -D warnings )
+
+step "ci.yml / clippy: clippy (no_std lib)"
+relint
+( export CARGO_TERM_COLOR="always"; cargo clippy --locked --lib --no-default-features -- -D warnings )
+
+step "ci.yml / clippy: Doc (warnings are errors)"
+( export CARGO_TERM_COLOR="always"; RUSTDOCFLAGS="-Dwarnings" cargo doc --locked --lib --no-deps )
+
+step "ci.yml / no-std: Build rlib for a target without std"
+rustup target list --installed | grep -q '^thumbv7em-none-eabihf$' || rustup target add thumbv7em-none-eabihf
+( export CARGO_TERM_COLOR="always"; cargo rustc --locked --lib --no-default-features --crate-type rlib --target thumbv7em-none-eabihf )
+
+step "ci.yml / msrv: cargo check on MSRV"
+(
+  export CARGO_TERM_COLOR="always"
+  cargo +1.85 check --lib --locked
+  cargo +1.85 check --lib --locked --no-default-features
+)
+
+step "ci.yml / oracle: Reference tables reproduce (src/fb1990_table.rs, tests/golden)"
+( export CARGO_TERM_COLOR="always"; scripts/oracle_check.sh )
+
+step "security-audit.yml / deny: cargo deny (all features)"
+( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5"; cargo deny --all-features check all )
+
+step "security-audit.yml / unused-deps: cargo machete"
+cargo machete
+
+step "security-audit.yml / stub-guard: Detect todo! / unimplemented! / panic!(STUB) / dbg!"
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5"
+  set -eo pipefail
+  hits=$(grep -rnE 'todo!\(|unimplemented!\(|panic!\([^)]*STUB|dbg!\(' src/ --include="*.rs" || true)
+  if [ -n "$hits" ]; then
+    echo "stub or debug macro in src/:"
+    echo "$hits"
+    exit 1
+  fi
+  echo "no todo! / unimplemented! / STUB panic / dbg! in src/"
+)
+
+step "security-audit.yml / stub-guard: Detect platform libm / mul_add calls in src/"
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5"
+  set -eo pipefail
+  n=$(find src -name '*.rs' | wc -l)
+  if [ "$n" -eq 0 ]; then echo "scanned 0 files"; exit 1; fi
+  hits=$(grep -rnE '\.(sin|cos|tan|asin|acos|atan|atan2|sin_cos|sinh|cosh|tanh|exp|exp2|ln|log|log2|log10|powf|powi|cbrt|hypot|sqrt|mul_add)\(' src/ --include="*.rs" \
+    | grep -vE '^\S+:[0-9]+:\s*//' || true)
+  if [ -n "$hits" ]; then
+    echo "platform libm / mul_add call in src/:"
+    echo "$hits"
+    exit 1
+  fi
+  echo "scanned $n files: no platform libm / mul_add call"
+)
+
+step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_utc_round_trip]"
+if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
+  ( export CARGO_TERM_COLOR="always"; cargo +nightly fuzz build fuzz_utc_round_trip )
+else
+  echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_utc_round_trip]: nightly / cargo-fuzz not installed' >&2
+fi
+
+step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_tai_to_utc]"
+if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
+  ( export CARGO_TERM_COLOR="always"; cargo +nightly fuzz build fuzz_tai_to_utc )
+else
+  echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_tai_to_utc]: nightly / cargo-fuzz not installed' >&2
+fi
+
+step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_tdb_and_jd]"
+if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
+  ( export CARGO_TERM_COLOR="always"; cargo +nightly fuzz build fuzz_tdb_and_jd )
+else
+  echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_tdb_and_jd]: nightly / cargo-fuzz not installed' >&2
+fi
+
+python3 scripts/test_check_eol.py
+python3 scripts/check_eol.py
+python3 scripts/test_public_text.py
+scripts/public_text.sh
+
+if [[ $quick -eq 1 ]]; then
+  echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0
+fi
+
+step "ci.yml / test: Test (debug)"
+( export CARGO_TERM_COLOR="always"; cargo test --locked )
+
+step "ci.yml / test: Test (release)"
+( export CARGO_TERM_COLOR="always"; cargo test --locked --release )
+
+step "ci.yml / test: Test (no default features)"
+( export CARGO_TERM_COLOR="always"; cargo test --locked --no-default-features )
+
+step "security-audit.yml / audit: cargo audit"
+( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5"; cargo audit --deny yanked )
+
+step "security-audit.yml / coverage: Coverage summary"
+(
+  log="$(mktemp)"
+  set +e
+  {
+    ( export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5"; cargo llvm-cov --summary-only )
+  } 2>&1 | tee "${log}"
+  rc=${PIPESTATUS[0]}
+  n=$(sed $'s/\033\[[0-9;]*m//g' "${log}" | awk '$1 == "TOTAL" && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {n = $2 - $3} END {print n + 0}')
+  rm -f "${log}"
+  set -e
+  if [ -z "${n}" ] || [ "${n}" -eq 0 ]; then echo 'security-audit.yml / coverage: Coverage summary: cargo-llvm-cov compared nothing (continue-on-error in CI; a run with no count fails)' >&2; exit 1; fi
+  echo 'PREFLIGHT-INFO: security-audit.yml / coverage: Coverage summary: continue-on-error in CI, '"exit ${rc}, ${n} compared" >&2
+)
+
+echo; echo "preflight OK"

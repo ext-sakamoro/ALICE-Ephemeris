@@ -5,13 +5,13 @@
 //! name, its data, the alice-det-math `SEMANTICS_ID` where it evaluates `f64`
 //! transcendentals, and the digest of its outputs over a frozen reference grid
 //! whose inputs are pinned by their own SHA-256 and count. The identifiers are
-//! kept here until they join `law::ALL` in src/law.rs.
+//! in src/law.rs (`law::ALL`).
 //!
 //! Author: Moroya Sakamoto
 
 use alice_ephemeris::eop::{EopFlag, EopRow, EopTable};
 use alice_ephemeris::frames::{self, TemeToItrs};
-use alice_ephemeris::law::Law;
+use alice_ephemeris::law::{self, Law, ERA_2000, IAU2006_CIO, TEME_ITRS, UT1_TAI};
 use alice_ephemeris::{ExpiryPolicy, Instant, Jd2, Tai, TimeError, ATTO_PER_SEC};
 use sha2::{Digest, Sha256};
 
@@ -34,39 +34,6 @@ const REFERENCE_TEME_ITRS: &str =
     "922d9553dc8200eff46deead1a075a2ead42e05dff5c49e51014c56788173dd1";
 const REFERENCE_IAU2006_CIO: &str =
     "fe71c2f10c3823db3c22fa84413d8b7f44a2d6bae5ac81dc6bcebe93bff62975";
-
-const UT1_TAI: Law = Law {
-    name: "alice-ephemeris/ut1-tai-eop",
-    semantics_id: [
-        0x3c, 0x75, 0xd7, 0xa5, 0x78, 0x56, 0xe7, 0x17, 0xc1, 0x83, 0x47, 0xb8, 0x7b, 0x77, 0xeb,
-        0x39, 0x86, 0x22, 0x3e, 0x73, 0x04, 0xdf, 0x2e, 0xcc, 0xc2, 0xb9, 0x20, 0xce, 0x86, 0xd6,
-        0xfb, 0xa8,
-    ],
-};
-const ERA_2000: Law = Law {
-    name: "alice-ephemeris/era-2000",
-    semantics_id: [
-        0x11, 0xd1, 0x01, 0x41, 0xce, 0x74, 0xca, 0x36, 0x15, 0xf8, 0xc7, 0x21, 0xfa, 0x91, 0xf2,
-        0xfb, 0xac, 0x60, 0x95, 0x92, 0x41, 0x18, 0x6c, 0x2a, 0xbb, 0xfd, 0x5e, 0xed, 0x91, 0xdc,
-        0x86, 0x8c,
-    ],
-};
-const TEME_ITRS: Law = Law {
-    name: "alice-ephemeris/teme-itrs-gmst82",
-    semantics_id: [
-        0xec, 0xf5, 0xd5, 0x1e, 0xa9, 0x93, 0x60, 0x49, 0xf2, 0x57, 0x52, 0xb9, 0x4e, 0x82, 0xa0,
-        0xa9, 0x7d, 0x05, 0x5f, 0xf9, 0x26, 0xf6, 0x18, 0xa9, 0x9b, 0x13, 0x69, 0x27, 0xe3, 0xeb,
-        0xc1, 0x07,
-    ],
-};
-const IAU2006_CIO: Law = Law {
-    name: "alice-ephemeris/iau2006-2000a-cio",
-    semantics_id: [
-        0xac, 0x78, 0xe8, 0x09, 0xf6, 0x63, 0xfc, 0xd9, 0x7b, 0x35, 0x10, 0x80, 0xdb, 0x2a, 0xc4,
-        0xb7, 0x5e, 0xbf, 0x14, 0xe0, 0x80, 0xe2, 0xa8, 0xb1, 0x1a, 0xaf, 0xd6, 0x30, 0x9e, 0x04,
-        0x44, 0xa8,
-    ],
-};
 
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
@@ -372,4 +339,7 @@ fn semantics_ids() {
         }
     }
     assert!(bad.is_empty(), "semantics ids changed:\n{}", bad.join("\n"));
+    for l in [UT1_TAI, ERA_2000, TEME_ITRS, IAU2006_CIO] {
+        assert!(law::ALL.contains(&l), "{} is not in law::ALL", l.name);
+    }
 }

@@ -29,6 +29,20 @@ project adheres to [Semantic Versioning](https://semver.org/).
   half a second and one second beyond).
   No earlier identifier was released, so no old → new entry is listed.
 - Two-part Julian Date (`Jd2`) and exact Modified Julian Date (`Mjd`).
+- `eop`: `EopRow::parse_finals2000a` reads IERS Rapid Service `finals2000A`
+  rows (Bulletin A columns) as the integers they print; `EopTable::at` gives
+  UT1 − TAI, the pole coordinates and dX, dY by 4-point Lagrange in the TAI
+  time of the rows, with observed / predicted flags and the leap-table
+  provenance; `Instant<Tai>::to_ut1` and `Instant<Ut1>::to_tai` (scale
+  `Ut1`); `TimeError::EopOutOfRange` outside the rows.
+- `frames`: Earth rotation angle (`era00`, `Instant<Ut1>::earth_rotation_angle`),
+  GMST 1982 (`gmst82`), s′ (`sp00`), polar motion (`pom00`), TEME → ITRS
+  (`TemeToItrs`), IAU 2006/2000A precession-nutation (`nut00a`, `nut06a`,
+  `pfw06`, `obl06`, `pnm06a`), the CIO locator (`s06`) and the CIO-based
+  matrices (`c2ixys`, `c2i06a`, `c2tcio`, `c2t06a`), in ERFA's operation order
+  with alice-det-math's transcendentals.
+- Laws `ut1-tai-eop`, `era-2000`, `teme-itrs-gmst82` and `iau2006-2000a-cio`
+  in `law::ALL`.
 - Laws with semantics identifiers (`law::ALL`).
 - Reference tables generated from ERFA and CSPICE (`scripts/gen_time_golden.py`)
   and golden output digests checked on every CI platform and wasm32. The

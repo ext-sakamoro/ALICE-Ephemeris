@@ -23,7 +23,11 @@ fetch() {
 }
 fetch naif0012.tls https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls
 fetch dtdb.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/dtdb.c
+fetch nut00a.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/nut00a.c
+fetch s06.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/s06.c
 "$venv/bin/python" -I scripts/gen_fb1990_table.py "$cache/src/dtdb.c" --check
 "$venv/bin/python" -I scripts/gen_time_golden.py "$cache/src/naif0012.tls" "$cache/src/dtdb.c" --check
 "python3" -I scripts/gen_eop_golden.py --check
 "$venv/bin/python" -I scripts/gen_frames_golden.py --check
+"$venv/bin/python" -I scripts/gen_iau2006_tables.py "$cache/src/nut00a.c" "$cache/src/s06.c" --check
+"$venv/bin/python" -I scripts/gen_cio_golden.py --check

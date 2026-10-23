@@ -21,3 +21,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - Laws with semantics identifiers (`law::ALL`).
 - Reference tables generated from ERFA and CSPICE (`scripts/gen_time_golden.py`)
   and golden output digests checked on every CI platform and wasm32.
+- `scripts/mutants-equivalent.txt` with `scripts/mutants_equivalent_check.py`:
+  the surviving mutants that cannot change a result, each with its reason;
+  the check fails on an unlisted survivor, on a listed entry that no longer
+  survives, and on an empty list, and reports timeouts as unverified.

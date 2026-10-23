@@ -155,14 +155,8 @@ impl UtcDateTime {
         // the day: inside a row every UTC day lasts 86400 s or longer on the
         // TAI scale (no row has a negative rate; tests/leap_table.rs), so the
         // estimate from 86400 s days is never early, and late by at most one
-        // day (TAI − UTC drifts < 0.003 s per day); step back to the last day
-        // that starts at or before t
-        let est = (t - start_tai(seg)).div_euclid(DAY_ATTO);
-        let mut mjd = seg.start_mjd + i64::try_from(est).map_err(|_| TimeError::OutOfRange)?;
-        mjd = mjd.min(end_mjd - 1);
-        while day_start_tai(seg, mjd) > t {
-            mjd -= 1;
-        }
+        // day (TAI − UTC drifts < 0.003 s per day)
+        let mjd = day_of(seg, end_mjd, t)?;
         // t − label(mjd) − delat = sod·(den + R)/den + (mjd − ref)·DAY·R/den
         let r = i128::from(seg.rate_e7);
         let y = t - label(mjd) - i128::from(seg.delat_e7) * 100_000_000_000;
@@ -256,6 +250,27 @@ fn label(mjd: i64) -> i128 {
     (i128::from(mjd - MJD_2000) * 86_400 - 43_200) * ATTO
 }
 
+/// The UTC day of row `seg` (ending before day `end_mjd`) that holds TAI
+/// instant `t` (attoseconds, `t` at or after the row's start).
+///
+/// The estimate from 86400 s days is never early and late by at most one day
+/// (see the caller), so one step back finds the day. Both halves are checked
+/// rather than assumed: a row that broke them is an error, not a wrong day.
+fn day_of(seg: &Segment, end_mjd: i64, t: i128) -> Result<i64, TimeError> {
+    let est = (t - start_tai(seg)).div_euclid(DAY_ATTO);
+    let mut mjd = seg.start_mjd + i64::try_from(est).map_err(|_| TimeError::OutOfRange)?;
+    mjd = mjd.min(end_mjd - 1);
+    if day_start_tai(seg, mjd) > t {
+        mjd -= 1;
+    }
+    let late = day_start_tai(seg, mjd) > t;
+    let early = mjd + 1 < end_mjd && day_start_tai(seg, mjd + 1) <= t;
+    if late || early {
+        return Err(TimeError::OutOfRange);
+    }
+    Ok(mjd)
+}
+
 fn day_start_tai(seg: &Segment, mjd: i64) -> i128 {
     label(mjd) + offset(seg, mjd, 0)
 }
@@ -267,4 +282,60 @@ fn start_tai(seg: &Segment) -> i128 {
 /// `n / d` rounded to the nearest integer, ties toward +∞ (`d > 0`).
 fn div_round(n: i128, d: i128) -> i128 {
     (2 * n + d).div_euclid(2 * d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{day_of, day_start_tai, start_tai, DAY_ATTO};
+    use crate::leap::Segment;
+    use crate::TimeError;
+
+    /// A row whose TAI − UTC changes by `rate_e7`·10⁻⁷ s per day from MJD
+    /// 40000 (no table row has such a rate; they break the invariant that
+    /// the 86400 s estimate is never early and late by at most one day).
+    fn row(rate_e7: i64) -> Segment {
+        Segment {
+            start_mjd: 40_000,
+            delat_e7: 0,
+            ref_mjd: 40_000,
+            rate_e7,
+        }
+    }
+
+    #[test]
+    fn a_row_with_days_much_longer_than_86400_s_is_an_error() {
+        // each UTC day lasts 11 × 86400 s of TAI: the estimate is ~11× late
+        let seg = row(10 * 86_400 * 10_000_000);
+        let t = start_tai(&seg) + 50 * DAY_ATTO;
+        assert_eq!(day_of(&seg, i64::MAX, t), Err(TimeError::OutOfRange));
+    }
+
+    #[test]
+    fn a_row_with_days_shorter_than_86400_s_is_an_error() {
+        // each UTC day lasts 43200 s of TAI: the estimate is early
+        let seg = row(-43_200 * 10_000_000);
+        let t = start_tai(&seg) + 50 * DAY_ATTO;
+        assert_eq!(day_of(&seg, i64::MAX, t), Err(TimeError::OutOfRange));
+    }
+
+    #[test]
+    fn the_day_found_holds_the_instant() {
+        // 1961 drift row and a constant row: the first and last instant of a day
+        for seg in [
+            Segment {
+                start_mjd: 37_300,
+                delat_e7: 14_228_180,
+                ref_mjd: 37_300,
+                rate_e7: 12_960,
+            },
+            row(0),
+        ] {
+            for d in [0, 1, 7, 400] {
+                let start = day_start_tai(&seg, seg.start_mjd + d);
+                let next = day_start_tai(&seg, seg.start_mjd + d + 1);
+                assert_eq!(day_of(&seg, i64::MAX, start), Ok(seg.start_mjd + d));
+                assert_eq!(day_of(&seg, i64::MAX, next - 1), Ok(seg.start_mjd + d));
+            }
+        }
+    }
 }

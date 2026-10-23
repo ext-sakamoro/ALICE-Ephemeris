@@ -7,7 +7,7 @@
 #
 # usage: scripts/preflight.sh [--quick]   (--quick skips the test / bench suites)
 # generator rev fd42953c41f24e7bf3d7a247f664f39c6330c79d
-# local steps: scripts/preflight.local.sh 0df1f6765813af815146174bba77b43244de02e9
+# local steps: scripts/preflight.local.sh 045135b5b7d0bf9e139903b699852ec18ae72e20
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # --- heavy slot (begin) ---
@@ -367,6 +367,8 @@ python3 scripts/test_check_eol.py
 python3 scripts/check_eol.py
 python3 scripts/test_public_text.py
 scripts/public_text.sh
+python3 scripts/test_mutants_equivalent_check.py
+python3 scripts/mutants_equivalent_check.py --list-only
 
 if [[ $quick -eq 1 ]]; then
   echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0

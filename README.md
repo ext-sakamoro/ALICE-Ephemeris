@@ -49,7 +49,8 @@ assert_eq!(tdb.to_tt(TdbModel::Fb1990)?, tt);
   ERFA's ±3 ns statement only for 1950–2050 TT
   (`TdbModel::within_stated_accuracy`); the two models differ by at most
   38 µs over that period (measured).
-- `to_seconds_f64` and `to_jd2` are within 1 ulp of the exact value;
+- `to_seconds_f64` is the nearest `f64` for whole seconds and within 1 ulp
+  otherwise (any `i64` second); `to_jd2` is within 1 ulp of the exact value;
   `from_jd2` is as precise as its `f64` inputs (≈ 10 ps for a day fraction).
 
 ## Leap-second table expiry
@@ -87,8 +88,9 @@ Each conversion is a Law with a 32-byte semantics identifier (`law::ALL`):
 `utc-tai`, `tt-tai`, `tdb-spice-et`, `tdb-fb1990`, `julian-date`. The
 identifier is the SHA-256 of the Law's name, tables and constants (as bit
 patterns), the `alice-det-math` semantics identifier where it is used, and
-the golden digest of its outputs, so a value recorded with its identifier
-says which Law produced it.
+the digest of its outputs over a frozen reference grid. It moves if and only
+if those inputs or the reference outputs move; growing the regression tests
+does not move it.
 
 ## References and test oracles
 

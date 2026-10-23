@@ -5,12 +5,14 @@
 # check the SHA-256 of their source file and the pinned tool versions.
 #
 # The tools live in a virtual environment under ORACLE_VENV (default
-# ~/.cache/alice-ephemeris-oracle/venv), created from
+# ~/.cache/alice-ephemeris-oracle/venv-<hash of the requirements>), created from
 # scripts/oracle-requirements.txt on first use; the sources are cached next to it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cache="${ORACLE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/alice-ephemeris-oracle}"
-venv="${ORACLE_VENV:-$cache/venv}"
+# one environment per requirements file content, so a changed pin builds a new one
+req=$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()[:16])' scripts/oracle-requirements.txt)
+venv="${ORACLE_VENV:-$cache/venv-$req}"
 mkdir -p "$cache/src"
 if [[ ! -x "$venv/bin/python" ]]; then
   python3 -m venv "$venv"
@@ -22,4 +24,4 @@ fetch() {
 fetch naif0012.tls https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls
 fetch dtdb.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/dtdb.c
 "$venv/bin/python" -I scripts/gen_fb1990_table.py "$cache/src/dtdb.c" --check
-"$venv/bin/python" -I scripts/gen_time_golden.py "$cache/src/naif0012.tls" --check
+"$venv/bin/python" -I scripts/gen_time_golden.py "$cache/src/naif0012.tls" "$cache/src/dtdb.c" --check

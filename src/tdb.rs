@@ -12,10 +12,19 @@
 //! 2100, ≤ 2 ns at 3 × 10⁸ years from J2000 (SpiceEt; Fb1990 is the same near
 //! J2000 and grows with its polynomial terms).
 //!
-//! Both models evaluate for any instant, but far from J2000 the T¹…T⁴ terms
-//! of Fb1990 grow without bound; once |TDB − TT| reaches 1 s (about
-//! 5 × 10⁶ years from J2000) the conversions return
-//! [`TimeError::OutOfRange`] instead of a meaningless shift.
+//! Both models evaluate for any instant. The Fb1990 series is only
+//! meaningful around 1950–2050; far from J2000 its T¹…T⁴ terms grow without
+//! bound, and once |TDB − TT| reaches 1 s (first about 1.3 × 10⁵ years before
+//! and 1.5 × 10⁵ years after J2000, as for ERFA's eraDtdb) the conversions
+//! return [`TimeError::OutOfRange`] instead of a meaningless shift.
+//!
+//! Accuracy of the `f64` evaluation of Fb1990: within a bound derived from
+//! its arithmetic (t to 4 u relative, each argument f·t + p to
+//! 5 u·|f·t| + u·|f·t + p|, sin64 to 2 ulp, one rounding per product and
+//! per sum, Horner's γ₈ for the powers of t; u = 2⁻⁵³) of the same series
+//! evaluated exactly — measured at most 0.37 of that bound over 1600–2200.
+//! The bound, and so the agreement with any other evaluation such as ERFA's,
+//! degrades as t⁴ outside 1950–2050 (`tests/oracle_tdb.rs`).
 
 use alice_det_math::{round64, sin64};
 
@@ -157,5 +166,25 @@ fn to_duration(s: f64) -> Result<Duration, TimeError> {
         Duration::from_total_attoseconds(round64(s * 1e18) as i128)
     } else {
         Err(TimeError::OutOfRange)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::to_duration;
+    use crate::TimeError;
+
+    #[test]
+    fn shifts_of_one_second_or_more_are_out_of_range() {
+        // |TDB − TT| < 1 s is the documented domain; ±1.0 itself is outside
+        for s in [1.0, -1.0, 1.5, f64::NAN, f64::INFINITY] {
+            assert_eq!(to_duration(s), Err(TimeError::OutOfRange), "{s}");
+        }
+        let d = to_duration(-0.25).unwrap();
+        assert_eq!(
+            (d.seconds(), d.attoseconds()),
+            (-1, 750_000_000_000_000_000)
+        );
+        assert!(to_duration(0.999_999_999_999_999_9).is_ok());
     }
 }

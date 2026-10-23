@@ -130,7 +130,8 @@ impl<S: Scale> Instant<S> {
         Duration::from_total_attoseconds(self.total_attoseconds() - earlier.total_attoseconds())
     }
 
-    /// Seconds since J2000.0 as an `f64`, within 1 ulp of the exact value
+    /// Seconds since J2000.0 as an `f64`: the nearest `f64` for a whole
+    /// second, otherwise within 1 ulp of the exact value
     /// (IEEE operations only, so the same bits on every target; an `f64` of
     /// the magnitude of 2026 resolves about 1.2 × 10⁻⁷ s).
     pub fn to_seconds_f64(self) -> f64 {

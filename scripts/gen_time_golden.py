@@ -9,10 +9,12 @@ arithmetic (Python's fractions, rounded once by float()).
 
 Usage (versions pinned in scripts/oracle-requirements.txt):
     python3 -m venv .venv && .venv/bin/pip install -r scripts/oracle-requirements.txt
-    .venv/bin/python -I scripts/gen_time_golden.py <naif0012.tls>          # write
-    .venv/bin/python -I scripts/gen_time_golden.py <naif0012.tls> --check  # compare
+    .venv/bin/python -I scripts/gen_time_golden.py <naif0012.tls> <dtdb.c>          # write
+    .venv/bin/python -I scripts/gen_time_golden.py <naif0012.tls> <dtdb.c> --check  # compare
 
 naif0012.tls: https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls
+dtdb.c: https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/dtdb.c (the series' coefficients
+for the 60-digit evaluation)
 """
 
 import datetime
@@ -24,13 +26,16 @@ import warnings
 from fractions import Fraction
 
 import erfa
+import mpmath
 import numpy
+import re
 import spiceypy
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "tests" / "golden"
 NAIF0012_SHA256 = "678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b"
-PINS = {"pyerfa": "2.0.1.5", "spiceypy": "8.3.0", "numpy": "2.5.4", "cspice": "CSPICE_N0067"}
+PINS = {"pyerfa": "2.0.1.5", "spiceypy": "8.3.0", "numpy": "2.5.4", "mpmath": "1.4.1", "cspice": "CSPICE_N0067"}
+DTDB_SHA256 = "228bd7c7c1c88dda44c29a076f289c968f64d77a2dc389138b03ab5d1d442105"
 # the leap-second table's expiry ("File expires on 28 June 2027")
 EXPIRES = datetime.date(2027, 6, 28)
 J2000_DATE = datetime.date(2000, 1, 1)
@@ -161,14 +166,74 @@ def tt_grid(start_year: int, end_year: int, n: int) -> list:
     return pts
 
 
+FB = {}  # filled in main(): "terms" (787 x 3), "blocks", "jpl" (4 x 3), "t2"
+
+
+def load_dtdb(path: pathlib.Path) -> None:
+    """The series' coefficients as printed in ERFA v2.0.1 dtdb.c (the same
+    source as src/fb1990_table.rs), each read as the nearest f64, which is
+    what the crate evaluates with."""
+    src = path.read_bytes()
+    if hashlib.sha256(src).hexdigest() != DTDB_SHA256:
+        sys.exit("dtdb.c does not have the pinned sha256")
+    text = src.decode("utf-8")
+    body = text[text.index("fairhd[787][3] = {"):]
+    body = body[: body.index("};")]
+    num = r"([-+0-9.eE]+)"
+    terms = [tuple(float(x) for x in m) for m in re.findall(r"\{\s*" + num + r"\s*,\s*" + num + r"\s*,\s*" + num + r"\s*\}", body)]
+    if len(terms) != 787:
+        sys.exit(f"{len(terms)} terms")
+    wj = text[text.index("wj ="): text.index("t * t;") + 6]
+    jpl = [tuple(float(x) for x in m) for m in re.findall(r"\(?\s*" + num + r"\s*\*\s*sin\(\s*" + num + r"\s*\*\s*t\s*\+\s*" + num + r"\)", wj)]
+    t2 = re.findall(num + r"\s*\*\s*t\s*\*\s*t", wj)
+    if len(jpl) != 4 or len(t2) != 1:
+        sys.exit("could not read the JPL adjustment of dtdb.c")
+    FB.update(terms=terms, blocks=[0, 474, 679, 764, 784, 787], jpl=jpl, t2=float(t2[0]))
+
+
+def fb1990_exact(sec: int) -> str:
+    """The same 787-term series evaluated in 60-digit arithmetic at the exact
+    t = sec / (86400 * 365250): what the f64 evaluation approximates."""
+    mpmath.mp.dps = 60
+    m = mpmath.mpf
+    t = m(sec) / m(86400 * 365250)
+    terms, blocks = FB["terms"], FB["blocks"]
+    total = m(0)
+    for k in range(5):
+        w = m(0)
+        for a, f, p in terms[blocks[k]:blocks[k + 1]]:
+            w += m(a) * mpmath.sin(m(f) * t + m(p))
+        total += w * t**k
+    for a, f, p in FB["jpl"]:
+        total += m(a) * mpmath.sin(m(f) * t + m(p))
+    total += m(FB["t2"]) * t * t
+    return mpmath.nstr(total, 30, strip_zeros=False)
+
+
 def tdb_fb1990_csv() -> str:
     out = io.StringIO()
-    out.write("# TT (whole s since J2000 TT) -> TDB - TT (s), ERFA eraDtdb(jd1, jd2, 0, 0, 0, 0)\n")
-    out.write("tt_sec,tdb_minus_tt\n")
+    out.write("# TT (whole s since J2000 TT) -> TDB - TT (s), ERFA eraDtdb(jd1, jd2, 0, 0, 0, 0),\n")
+    out.write("# and the same series in 60-digit arithmetic at the exact t (mpmath)\n")
+    out.write("tt_sec,tdb_minus_tt,exact\n")
     for sec in tt_grid(1600, 2200, 1201):
         jd1 = 2451545.0 + (sec // 86400)
         jd2 = float(Fraction(sec % 86400, 86400))
-        out.write(f"{sec},{repr(float(erfa.dtdb(jd1, jd2, 0.0, 0.0, 0.0, 0.0)))}\n")
+        out.write(f"{sec},{repr(float(erfa.dtdb(jd1, jd2, 0.0, 0.0, 0.0, 0.0)))},{fb1990_exact(sec)}\n")
+    return out.getvalue()
+
+
+def tdb_fb1990_far_csv() -> str:
+    """Far from J2000, where the polynomial terms bring |TDB - TT| to 1 s."""
+    out = io.StringIO()
+    out.write("# TT (whole s since J2000 TT, years x 365.25 days) -> TDB - TT (s), ERFA eraDtdb, far from J2000,\n")
+    out.write("# and the same series in 60-digit arithmetic at the exact t (mpmath)\n")
+    out.write("years,tt_sec,tdb_minus_tt,exact\n")
+    years = list(range(-200_000, 200_001, 2_500)) + [-136_400, -131_600, -131_500, 130_000, 147_100, 147_200]
+    for yr in sorted(set(years)):
+        sec = yr * 36525 * 864  # yr * 365.25 * 86400
+        jd1 = 2451545.0 + (sec // 86400)
+        jd2 = float(Fraction(sec % 86400, 86400))
+        out.write(f"{yr},{sec},{repr(float(erfa.dtdb(jd1, jd2, 0.0, 0.0, 0.0, 0.0)))},{fb1990_exact(sec)}\n")
     return out.getvalue()
 
 
@@ -209,6 +274,24 @@ def jd_csv() -> str:
     return out.getvalue()
 
 
+def seconds_f64_csv() -> str:
+    """Instant -> the f64 nearest to sec + atto/1e18 (exact rational, rounded once)."""
+    import random
+    rng = random.Random(20261023)
+    out = io.StringIO()
+    out.write("# instant (s + attoseconds since J2000) -> nearest f64 of the exact value (fractions, float())\n")
+    out.write("sec,atto,nearest\n")
+    secs = [0, 1, -1, 2**53, -(2**53), 2**53 + 1, -(2**53) - 1, 2**62, -(2**62), 2**63 - 1, -(2**63)]
+    secs += [rng.randrange(-(2**63), 2**63) for _ in range(300)]
+    secs += [-rng.randrange(2**53, 2**63) for _ in range(300)]
+    secs += [rng.randrange(-(10**10), 10**10) for _ in range(300)]
+    for sec in secs:
+        for atto in (0, 1, 500_000_000_000_000_000, ATTO - 1, rng.randrange(ATTO)):
+            v = float(Fraction(sec) + Fraction(atto, ATTO))
+            out.write(f"{sec},{atto},{v!r}\n")
+    return out.getvalue()
+
+
 def header(kernel: pathlib.Path) -> str:
     iana = hashlib.sha256((ROOT / "tests" / "data" / "leap-seconds.list").read_bytes()).hexdigest()
     return (
@@ -221,10 +304,14 @@ def header(kernel: pathlib.Path) -> str:
 def main() -> None:
     if len(sys.argv) < 2:
         sys.exit(__doc__)
+    if len(sys.argv) < 3 or sys.argv[2].startswith("--"):
+        sys.exit(__doc__)
     kernel = pathlib.Path(sys.argv[1])
+    load_dtdb(pathlib.Path(sys.argv[2]))
     if hashlib.sha256(kernel.read_bytes()).hexdigest() != NAIF0012_SHA256:
         sys.exit("naif0012.tls does not have the pinned sha256")
     got = {"pyerfa": erfa.__version__, "spiceypy": spiceypy.__version__, "numpy": numpy.__version__,
+           "mpmath": mpmath.__version__,
            "cspice": spiceypy.tkvrsn("TOOLKIT")}
     if got != PINS:
         sys.exit(f"versions {got} != pinned {PINS}")
@@ -233,11 +320,13 @@ def main() -> None:
         "utc_tai.csv": utc_tai_csv(),
         "tai_utc.csv": tai_utc_csv(),
         "tdb_fb1990.csv": tdb_fb1990_csv(),
+        "tdb_fb1990_far.csv": tdb_fb1990_far_csv(),
         "tdb_spice.csv": tdb_spice_csv(),
         "calendar.csv": calendar_csv(),
         "jd.csv": jd_csv(),
+        "seconds_f64.csv": seconds_f64_csv(),
     }
-    check = "--check" in sys.argv[2:]
+    check = "--check" in sys.argv[3:]
     bad = 0
     for name, body in files.items():
         text = header(kernel) + body

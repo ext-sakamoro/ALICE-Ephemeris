@@ -40,6 +40,7 @@ mod calendar;
 pub mod eop;
 mod error;
 mod fb1990_table;
+pub mod frames;
 mod instant;
 mod jd;
 pub mod law;

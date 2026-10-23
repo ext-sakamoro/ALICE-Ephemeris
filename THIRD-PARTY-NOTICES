@@ -20,6 +20,17 @@ with the IANA time zone database, updated through IERS Bulletin C. The file
 states: "This file is in the public domain."
 
 ------------------------------------------------------------------------
+NAIF SPICE leapseconds kernel naif0012.tls (constants only)
+------------------------------------------------------------------------
+
+src/tdb.rs holds the four DELTET constants of the NAIF leapseconds kernel
+naif0012.tls (DELTET/K, DELTET/EB and the two DELTET/M values), from the
+Navigation and Ancillary Information Facility (NAIF), NASA Jet Propulsion
+Laboratory (https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/). The
+kernel file itself is not included; the reference-table generator downloads
+it and checks its SHA-256.
+
+------------------------------------------------------------------------
 ERFA (Essential Routines for Fundamental Astronomy)
 ------------------------------------------------------------------------
 

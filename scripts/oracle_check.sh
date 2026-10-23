@@ -27,9 +27,13 @@ fetch dtdb.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/dtdb.c
 fetch dat.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/dat.c
 fetch nut00a.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/nut00a.c
 fetch s06.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/s06.c
+fetch epv00.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/epv00.c
+fetch moon98.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/moon98.c
 "$venv/bin/python" -I scripts/gen_fb1990_table.py "$cache/src/dtdb.c" --check
 "$venv/bin/python" -I scripts/gen_time_golden.py "$cache/src/naif0012.tls" "$cache/src/dtdb.c" "$cache/src/dat.c" --check
 "python3" -I scripts/gen_eop_golden.py --check
 "$venv/bin/python" -I scripts/gen_frames_golden.py --check
 "$venv/bin/python" -I scripts/gen_iau2006_tables.py "$cache/src/nut00a.c" "$cache/src/s06.c" --check
 "$venv/bin/python" -I scripts/gen_cio_golden.py "$cache/src/nut00a.c" "$cache/src/s06.c" --check
+"$venv/bin/python" -I scripts/gen_sunmoon_tables.py "$cache/src/epv00.c" "$cache/src/moon98.c" --check
+"$venv/bin/python" -I scripts/gen_sunmoon_golden.py "$cache/src/epv00.c" "$cache/src/moon98.c" --check

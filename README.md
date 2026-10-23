@@ -9,7 +9,8 @@ It is the time layer for ephemerides and reference frames that follow.
 
 **Not for:** UT1 and Earth orientation (needs IERS EOP data, not included),
 topocentric TDB terms (≤ 2 µs), TCG / TCB, local time zones, or reading the
-system clock. Planetary positions and frames are not part of this release.
+system clock. Planetary positions other than the Earth and the Moon are not
+part of this release.
 
 ## What it does
 
@@ -24,6 +25,8 @@ system clock. Planetary positions and frames are not part of this release.
 | Earth rotation angle, GMST (1982), s′ (`frames`) | ERFA `era00` / `gmst82` / `sp00` in the same IEEE operations | bit for bit with ERFA's expressions evaluated in IEEE binary64 |
 | TEME → ITRS (`frames::TemeToItrs`) | GMST (1982) and polar motion, velocity with the length-of-day term (Vallado et al. 2006) | ERFA composition within 10⁻¹¹ km; AIAA 2006-6753 example within its one-part Julian date |
 | GCRS → CIRS → ITRS (`frames::c2i06a`, `c2t06a`) | IAU 2006/2000A precession-nutation (1365 nutation terms), CIO locator s, ERA, polar motion | ERFA test vectors; pyerfa 1800–2200 within 2 × 10⁻¹⁶ rad (nutation), 10⁻¹⁵ (matrices) |
+| Earth and Sun (`sunmoon::epv00`) | ERFA `eraEpv00`: simplified VSOP2000 (1,951 terms), heliocentric and barycentric position and velocity, BCRS | ERFA's expressions within a derived bound (≤ 4 × 10⁻¹³ au); JPL Horizons DE441 1900–2100 within the model's 11.2 km |
+| Moon (`sunmoon::moon98`) | ERFA `eraMoon98`: Meeus (1998) series, 120 terms, rotated into the GCRS by IAU 2006 precession | ERFA's expressions within a derived bound (≤ 2 × 10⁻¹⁶ au); Meeus Example 47.a; JPL Horizons DE441 within the model's 31.7 km |
 
 ```rust
 use alice_ephemeris::{ExpiryPolicy, TdbModel, UtcDateTime};
@@ -93,7 +96,8 @@ Rust 1.85 (`rust-version` in `Cargo.toml`), checked by the CI `msrv` job.
 
 Each conversion is a Law with a 32-byte semantics identifier (`law::ALL`):
 `utc-tai`, `tt-tai`, `tdb-spice-et`, `tdb-fb1990`, `julian-date`,
-`ut1-tai-eop`, `era-2000`, `teme-itrs-gmst82`, `iau2006-2000a-cio`. The
+`ut1-tai-eop`, `era-2000`, `teme-itrs-gmst82`, `iau2006-2000a-cio`,
+`earth-epv00`, `moon98`. The
 identifier is the SHA-256 of the Law's name, tables and constants (as bit
 patterns), the `alice-det-math` semantics identifier where it is used, and
 the digest of its outputs over a frozen reference grid. It moves if and only
@@ -124,7 +128,14 @@ None of the expected values in `tests/golden/` comes from this crate.
   pyerfa for the series and matrices (within derived bounds), mpmath for the
   Earth rotation angle of exact instants, and the ERFA test vectors of
   `t_erfa_c.c`. The IAU 2000A and s series are generated from ERFA `nut00a.c`
-  and `s06.c` by `scripts/gen_iau2006_tables.py` (SHA-256 pinned).
+  and `s06.c` by `scripts/gen_iau2006_tables.py` (SHA-256 pinned);
+- `scripts/gen_sunmoon_golden.py`: ERFA `eraEpv00` and `eraMoon98` evaluated
+  in IEEE binary64 (bit reference, with a bound per row for 1-ulp sines),
+  pyerfa within derived bounds; the coefficient tables are generated from
+  ERFA `epv00.c` and `moon98.c` by `scripts/gen_sunmoon_tables.py` (SHA-256
+  pinned). Independent of ERFA: JPL Horizons DE441 states
+  (`tests/data/horizons-sunmoon.csv`, `scripts/fetch_horizons_sunmoon.py`)
+  and Meeus, *Astronomical Algorithms*, Example 47.a.
 
 The 1960–1971 TAI − UTC rows are those of ERFA `dat.c` (USNO
 `tai-utc.dat`); the Fairhead & Bretagnon coefficients are generated from

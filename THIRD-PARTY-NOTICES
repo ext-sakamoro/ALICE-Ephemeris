@@ -44,7 +44,11 @@ the CIO locator s from the same release (src/nut00a.c and src/s06.c), and
 src/frames.rs follows the expressions and evaluation order of eraEra00,
 eraGmst82, eraSp00, eraPom00, eraNut00a, eraNut06a, eraPfw06, eraObl06,
 eraFw2m, eraPnm06a, eraS06, eraC2ixys, eraC2i06a, eraC2tcio, eraC2t06a and
-the eraFa*03 fundamental arguments. ERFA is distributed under the following
+the eraFa*03 fundamental arguments. src/sunmoon_table.rs holds the Earth
+ephemeris coefficients and the Moon series from the same release
+(src/epv00.c and src/moon98.c), and src/sunmoon.rs follows the expressions
+and evaluation order of eraEpv00, eraMoon98 and eraS2pv. ERFA is distributed
+under the following
 licence:
 
 Copyright (C) 2013-2023, NumFOCUS Foundation.

@@ -118,8 +118,31 @@ pub const IAU2006_CIO: Law = Law {
     ],
 };
 
+/// The Earth's heliocentric and barycentric position and velocity: ERFA's
+/// simplified VSOP2000 solution (`eraEpv00`), whose negated heliocentric vector
+/// is the geocentric Sun.
+pub const EARTH_EPV00: Law = Law {
+    name: "alice-ephemeris/earth-epv00",
+    semantics_id: [
+        0x5d, 0x00, 0x84, 0xf4, 0xc4, 0x05, 0x56, 0xd5, 0x74, 0x4a, 0xb5, 0x37, 0xeb, 0x3c, 0xba,
+        0x4d, 0x47, 0x40, 0xe3, 0xa6, 0x80, 0x69, 0x43, 0x08, 0x2b, 0x39, 0x9c, 0x35, 0xb8, 0x86,
+        0x9b, 0x79,
+    ],
+};
+
+/// The Moon's geocentric position and velocity: the Meeus series rotated into
+/// the GCRS with the IAU 2006 precession (`eraMoon98`).
+pub const MOON_98: Law = Law {
+    name: "alice-ephemeris/moon98",
+    semantics_id: [
+        0x3c, 0xe5, 0x10, 0xed, 0x84, 0x60, 0x8b, 0xbd, 0xb8, 0x70, 0xc0, 0x44, 0xe1, 0x45, 0x13,
+        0x58, 0x06, 0x85, 0x20, 0xbe, 0x1e, 0x6f, 0x6c, 0x9a, 0x6b, 0x0b, 0xb8, 0xb1, 0xe3, 0x34,
+        0x46, 0x86,
+    ],
+};
+
 /// Every Law of the crate.
-pub const ALL: [Law; 9] = [
+pub const ALL: [Law; 11] = [
     UTC_TAI,
     TT_TAI,
     TDB_SPICE_ET,
@@ -129,4 +152,6 @@ pub const ALL: [Law; 9] = [
     ERA_2000,
     TEME_ITRS,
     IAU2006_CIO,
+    EARTH_EPV00,
+    MOON_98,
 ];

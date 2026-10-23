@@ -46,6 +46,8 @@ mod instant;
 mod jd;
 pub mod law;
 pub mod leap;
+pub mod sunmoon;
+mod sunmoon_table;
 pub mod tdb;
 mod tt;
 mod utc;

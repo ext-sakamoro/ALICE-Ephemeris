@@ -43,6 +43,17 @@ project adheres to [Semantic Versioning](https://semver.org/).
   with alice-det-math's transcendentals.
 - Laws `ut1-tai-eop`, `era-2000`, `teme-itrs-gmst82` and `iau2006-2000a-cio`
   in `law::ALL`.
+- `sunmoon`: the Earth's heliocentric and barycentric position and velocity
+  (`epv00`, ERFA `eraEpv00`, simplified VSOP2000) with the geocentric Sun
+  (`EarthPv::sun_geocentric`), and the Moon's geocentric position and velocity
+  (`moon98`, ERFA `eraMoon98`, Meeus 1998 rotated into the GCRS), in ERFA's
+  operation order with alice-det-math's sines and cosines. ERFA's own
+  departures are kept: the Moon's mean longitude omits the light-time
+  correction (0.744″ from Meeus), its velocity neglects the spin of the
+  precessing ecliptic (≤ 3 mm/s), and the rate of Meeus's argument A₁ is
+  taken as 0.003958°/century (≤ 2.2 mm/s). Laws `earth-epv00` and `moon98` in
+  `law::ALL`. Checked against ERFA's expressions in IEEE binary64 (bounds
+  derived per row), pyerfa, JPL Horizons DE441 and Meeus Example 47.a.
 - Laws with semantics identifiers (`law::ALL`).
 - Reference tables generated from ERFA and CSPICE (`scripts/gen_time_golden.py`)
   and golden output digests checked on every CI platform and wasm32. The

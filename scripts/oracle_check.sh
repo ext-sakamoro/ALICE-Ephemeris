@@ -25,3 +25,4 @@ fetch naif0012.tls https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif00
 fetch dtdb.c https://raw.githubusercontent.com/liberfa/erfa/v2.0.1/src/dtdb.c
 "$venv/bin/python" -I scripts/gen_fb1990_table.py "$cache/src/dtdb.c" --check
 "$venv/bin/python" -I scripts/gen_time_golden.py "$cache/src/naif0012.tls" "$cache/src/dtdb.c" --check
+"python3" -I scripts/gen_eop_golden.py --check

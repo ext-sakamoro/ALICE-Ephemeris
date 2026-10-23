@@ -15,9 +15,9 @@ mod sealed {
     pub trait Sealed {}
 }
 
-/// A uniform time scale an [`Instant`] is measured on.
+/// A time scale an [`Instant`] is measured on.
 pub trait Scale: sealed::Sealed + Copy + Ord + fmt::Debug + core::hash::Hash {
-    /// Short name of the scale (`"TAI"`, `"TT"`, `"TDB"`).
+    /// Short name of the scale (`"TAI"`, `"TT"`, `"TDB"`, `"UT1"`).
     const NAME: &'static str;
 }
 
@@ -47,6 +47,15 @@ scale!(
     /// Barycentric Dynamical Time (the time argument of JPL ephemerides).
     Tdb,
     "TDB"
+);
+
+scale!(
+    /// Universal Time UT1, the Earth rotation angle as time. It is not
+    /// uniform: an [`Instant`] on it counts 86400 s per UT1 day from
+    /// 2000-01-01 12:00:00 UT1 (the time argument of the Earth rotation
+    /// angle), and converting to TAI needs an Earth orientation table.
+    Ut1,
+    "UT1"
 );
 
 /// An instant on scale `S`: seconds since J2000.0 (2000-01-01 12:00:00 on

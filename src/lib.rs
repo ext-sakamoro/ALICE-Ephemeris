@@ -37,6 +37,7 @@
 #![forbid(unsafe_code)]
 
 mod calendar;
+pub mod eop;
 mod error;
 mod fb1990_table;
 mod instant;
@@ -49,7 +50,7 @@ mod utc;
 
 pub use calendar::{civil_from_mjd, days_in_month, mjd_from_civil};
 pub use error::TimeError;
-pub use instant::{Duration, Instant, Scale, Tai, Tdb, Tt, ATTO_PER_SEC};
+pub use instant::{Duration, Instant, Scale, Tai, Tdb, Tt, Ut1, ATTO_PER_SEC};
 pub use jd::{Jd2, Mjd, JD_J2000};
 pub use tdb::TdbModel;
 pub use tt::TT_MINUS_TAI;

@@ -23,6 +23,14 @@ pub enum TimeError {
         /// First UTC day (MJD) the table does not cover.
         expires_mjd: i64,
     },
+    /// Outside the days of the Earth orientation table (it is not
+    /// extrapolated).
+    EopOutOfRange {
+        /// MJD of the first row.
+        first_mjd: i64,
+        /// MJD of the last row.
+        last_mjd: i64,
+    },
 }
 
 impl fmt::Display for TimeError {
@@ -39,6 +47,13 @@ impl fmt::Display for TimeError {
                     "leap-second table expired (valid before MJD {expires_mjd})"
                 )
             }
+            Self::EopOutOfRange {
+                first_mjd,
+                last_mjd,
+            } => write!(
+                f,
+                "outside the Earth orientation table (MJD {first_mjd} to {last_mjd})"
+            ),
         }
     }
 }

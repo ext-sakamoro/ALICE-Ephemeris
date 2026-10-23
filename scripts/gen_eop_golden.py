@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Generate tests/golden/eop.csv: Earth orientation interpolated from the
+finals2000A excerpt in exact rational arithmetic.
+
+Independent of the crate: the rows are read here with their own column
+slicing, TAI - UTC comes from tests/data/leap-seconds.list (IANA), the row
+times and UT1 - TAI are exact integers of attoseconds, and the 4-point
+Lagrange weights are Fractions. Each output is the exact rational value,
+printed as the nearest attosecond (UT1 - TAI) or with repr(float()) (angles).
+
+Usage (standard library only):
+    python3 -I scripts/gen_eop_golden.py           # write
+    python3 -I scripts/gen_eop_golden.py --check   # compare
+"""
+
+import pathlib
+import sys
+from fractions import Fraction
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+EXCERPT = ROOT / "tests" / "data" / "finals2000A-excerpt.txt"
+LEAPS = ROOT / "tests" / "data" / "leap-seconds.list"
+OUT = ROOT / "tests" / "golden" / "eop.csv"
+ATTO = 10**18
+MJD_2000 = 51544
+NTP_MJD = 15020  # 1900-01-01
+
+
+def leap_table():
+    """(first MJD, TAI - UTC seconds) rows since 1972, and the expiry MJD."""
+    rows, expires = [], None
+    for line in LEAPS.read_text(encoding="utf-8").splitlines():
+        if line.startswith("#@"):
+            expires = NTP_MJD + int(line.split()[1]) // 86400
+        elif line and not line.startswith("#"):
+            ntp, delta = line.split()[:2]
+            rows.append((NTP_MJD + int(ntp) // 86400, int(delta)))
+    return rows, expires
+
+
+LEAP_ROWS, EXPIRES = leap_table()
+
+
+def tai_minus_utc(mjd):
+    return [d for start, d in LEAP_ROWS if start <= mjd][-1]
+
+
+def field(line, first, last):
+    return line[first - 1:last].strip()
+
+
+def read_rows():
+    """Contiguous blocks of rows that have UT1 - UTC."""
+    blocks, block = [], []
+    for line in EXCERPT.read_text(encoding="ascii").splitlines():
+        mjd = int(Fraction(field(line, 8, 15)))
+        if field(line, 58, 58) == "":
+            continue
+        nut = field(line, 96, 96)
+        row = {
+            "mjd": mjd,
+            "dut": Fraction(field(line, 59, 68)),
+            "uflag": field(line, 58, 58),
+            "xp": Fraction(field(line, 19, 27)),
+            "yp": Fraction(field(line, 38, 46)),
+            "pflag": field(line, 17, 17),
+            "dx": Fraction(field(line, 98, 106)) / 1000 if nut else None,
+            "dy": Fraction(field(line, 117, 125)) / 1000 if nut else None,
+        }
+        if block and block[-1]["mjd"] + 1 != mjd:
+            blocks.append(block)
+            block = []
+        block.append(row)
+    blocks.append(block)
+    return blocks
+
+
+def node_time(mjd):
+    """TAI attoseconds since J2000.0 at 00:00 UTC of `mjd`."""
+    return ((mjd - MJD_2000) * 86400 - 43200 + tai_minus_utc(mjd)) * ATTO
+
+
+def interpolate(block, t, assume):
+    n = len(block)
+    times = [node_time(r["mjd"]) for r in block]
+    if t < times[0] or t > times[-1]:
+        return "out_of_range"
+    k = max(i for i in range(n) if times[i] <= t)
+    s = min(max(k - 1, 0), n - 4)
+    window = block[s:s + 4]
+    expired = any(r["mjd"] >= EXPIRES for r in window)
+    if expired and not assume:
+        return "leap_table_expired"
+    x = [Fraction(times[s + j] - times[s], ATTO) for j in range(4)]
+    u = Fraction(t - times[s], ATTO)
+    w = []
+    for j in range(4):
+        v = Fraction(1)
+        for m in range(4):
+            if m != j:
+                v *= (u - x[m]) / (x[j] - x[m])
+        w.append(v)
+    ut1_tai = [r["dut"] * ATTO - tai_minus_utc(r["mjd"]) * ATTO for r in window]
+
+    def lag(vals):
+        return sum(wj * vj for wj, vj in zip(w, vals))
+
+    has_off = all(r["dx"] is not None for r in window)
+    flag = lambda key: "P" if any(r[key] == "P" for r in window) else "I"
+    return {
+        "ut1_minus_tai_atto": round(lag(ut1_tai)),
+        "xp": repr(float(lag([r["xp"] for r in window]))),
+        "yp": repr(float(lag([r["yp"] for r in window]))),
+        "dx": repr(float(lag([r["dx"] for r in window]))) if has_off else "",
+        "dy": repr(float(lag([r["dy"] for r in window]))) if has_off else "",
+        "uflag": flag("uflag"),
+        "pflag": flag("pflag"),
+        "leap": "assumed" if expired else "table",
+    }
+
+
+def queries(block):
+    """Every row time, then every 0.37 day plus a varying fraction, plus a
+    point inside each leap second and 1 s past each end."""
+    first, last = node_time(block[0]["mjd"]), node_time(block[-1]["mjd"])
+    out = [node_time(r["mjd"]) for r in block]
+    t, k = first, 0
+    while t <= last:
+        out.append(t)
+        t += 31968 * ATTO + (k * 123456789012345678) % ATTO
+        k += 1
+    for r in block[1:]:
+        if tai_minus_utc(r["mjd"]) != tai_minus_utc(r["mjd"] - 1):
+            out.append(node_time(r["mjd"]) - ATTO // 2)  # 23:59:60.5
+    out += [first - ATTO, last + ATTO]
+    return out
+
+
+def main():
+    lines = [
+        "# generated by scripts/gen_eop_golden.py from tests/data/finals2000A-excerpt.txt"
+        " and tests/data/leap-seconds.list (exact rationals)",
+        "block,tai_sec,tai_atto,policy,result,ut1_minus_tai_atto,xp_arcsec,yp_arcsec,"
+        "dx_arcsec,dy_arcsec,ut1_flag,polar_flag,leap",
+    ]
+    for b, block in enumerate(read_rows()):
+        for t in queries(block):
+            for policy in ("strict", "assume"):
+                r = interpolate(block, t, policy == "assume")
+                sec, atto = divmod(t, ATTO)
+                if isinstance(r, str):
+                    lines.append(f"{b},{sec},{atto},{policy},{r},,,,,,,,")
+                else:
+                    lines.append(
+                        f"{b},{sec},{atto},{policy},ok,{r['ut1_minus_tai_atto']},{r['xp']},{r['yp']},"
+                        f"{r['dx']},{r['dy']},{r['uflag']},{r['pflag']},{r['leap']}"
+                    )
+    text = "\n".join(lines) + "\n"
+    if "--check" in sys.argv:
+        if OUT.read_text(encoding="utf-8") != text:
+            sys.exit(f"{OUT} differs from the regenerated table")
+        print(f"{OUT}: {len(lines) - 2} rows match")
+    else:
+        OUT.write_text(text, encoding="utf-8")
+        print(f"wrote {OUT}: {len(lines) - 2} rows")
+
+
+if __name__ == "__main__":
+    main()

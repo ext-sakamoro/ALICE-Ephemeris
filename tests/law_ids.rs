@@ -40,8 +40,8 @@ const REFERENCE_TT_INPUTS: (&str, usize) = (
     9267,
 );
 const REFERENCE_FB1990_INPUTS: (&str, usize) = (
-    "a808d01f0c827e09db36da0a8bcfa6847a908bc2e76d7aed94812c7a4495c619",
-    9271,
+    "066f0f614ab777c0f1480e073a5aefefdf23228ac731b6becae95a4fbae47e23",
+    9275,
 );
 
 /// Output digests over the reference grids (folded into the identifiers).
@@ -50,7 +50,7 @@ const REFERENCE_TT_TAI: &str = "0d5b624d4b53142542751355d88d8bb5817e4298dca5ee27
 const REFERENCE_TDB_SPICE_ET: &str =
     "115f0b2aaf63ef8969a44dd0fb57840ca8be42adf07fee98837132efc782659f";
 const REFERENCE_TDB_FB1990: &str =
-    "7f041238d8c514755282d92e187d4a506484479a07616a94bdd5382671133459";
+    "8591125f33f9d236f68e922d6300d7d8f03f8dda0815d55d5262963da4235a73";
 const REFERENCE_JULIAN_DATE: &str =
     "e5c5cd9f10a2f822f294d41c5306e743a3136a4f4f4c1135a4c4fef02e2b9314";
 
@@ -114,13 +114,24 @@ fn reference_tt_inputs() -> Vec<Instant<Tt>> {
     v
 }
 
-/// The TT reference grid and the ends of the Fb1990 domain: ±130 Julian
-/// millennia (inside) and one second beyond (outside).
+/// The TT reference grid and the ends of the Fb1990 domain: ±110 Julian
+/// millennia and half a second inside (inside), half a second and one
+/// second beyond (outside).
 fn reference_fb1990_inputs() -> Vec<Instant<Tt>> {
     let mut v = reference_tt_inputs();
-    let end = 130 * 365_250 * 86_400;
-    for s in [-end - 1, -end, end, end + 1] {
-        v.extend([Instant::<Tt>::new(s, 0).unwrap()]);
+    let end = 110 * 365_250 * 86_400;
+    let half = ATTO_PER_SEC / 2;
+    for (s, a) in [
+        (-end - 1, 0),
+        (-end - 1, half),
+        (-end, 0),
+        (-end, half),
+        (end - 1, half),
+        (end, 0),
+        (end, half),
+        (end + 1, 0),
+    ] {
+        v.extend([Instant::<Tt>::new(s, a).unwrap()]);
     }
     v
 }

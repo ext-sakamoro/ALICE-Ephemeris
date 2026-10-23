@@ -1,6 +1,6 @@
 //! TT → TDB → TT returns within 2 |dΔ/dt| ulp(TT) (+1 as) whenever the conversion succeeds (it
 //! returns OutOfRange once |TDB − TT| ≥ 1 s, and for Fb1990 outside its domain of
-//! ±130,000 years, where the shift is NaN), and from_jd2 never panics on any pair of f64.
+//! ±110,000 years, where the shift is NaN), and from_jd2 never panics on any pair of f64.
 #![no_main]
 use alice_ephemeris::tdb::FB1990_DOMAIN_MILLENNIA;
 use alice_ephemeris::{Instant, Jd2, TdbModel, Tt};

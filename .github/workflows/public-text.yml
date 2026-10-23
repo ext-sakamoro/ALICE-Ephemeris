@@ -44,11 +44,14 @@ jobs:
           BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          base=""
+          # an event with no previous head (the first of a branch, main
+          # included) reads the whole history: origin/main is already the
+          # new head there, so a merge base would read no commit
+          base=all
           if [ -n "${PR_BASE:-}" ]; then
             base="$PR_BASE"
           elif [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
                && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             base="$BEFORE"
           fi
-          if [ -n "$base" ]; then scripts/public_text.sh "$base"; else scripts/public_text.sh; fi
+          scripts/public_text.sh "$base"

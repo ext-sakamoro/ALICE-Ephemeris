@@ -13,15 +13,22 @@
 //! J2000 and grows with its polynomial terms).
 //!
 //! SpiceEt evaluates for any instant. The Fb1990 series is only meaningful
-//! around 1950–2050; far from J2000 its T¹…T⁴ terms grow without bound, and
-//! |TDB − TT| first reaches 1 s about 1.3 × 10⁵ years before and 1.5 × 10⁵
-//! years after J2000 (as for ERFA's eraDtdb). Its domain is therefore
+//! around 1950–2050; far from J2000 its T¹…T⁴ terms grow without bound (as
+//! for ERFA's eraDtdb, whose |TDB − TT| first reaches 1 s at −123,365 and
+//! +126,978 years, scanned at 0.005-year steps). Its domain is
 //! |t| ≤ [`FB1990_DOMAIN_MILLENNIA`] Julian millennia from J2000 TT (t as
-//! the series reads it, from the nearest `f64` of TT), inside
-//! which |TDB − TT| < 1 s: outside it the series is not evaluated (there its
-//! arguments need the slow reduction of `sin64` for huge values, 20 times
-//! the cost), [`TdbModel::tdb_minus_tt`] returns NaN, and the conversions
-//! return [`TimeError::OutOfRange`], as they do for any shift of 1 s or more.
+//! the series reads it, from the nearest `f64` of TT). Inside it
+//! |TDB − TT| < 1 s is proven, not sampled: every sine is at most 1, so the
+//! value is at most Σₖ Wₖ·|t|ᵏ plus the JPL terms (Wₖ the sum of |amplitude|
+//! of the Tᵏ block), and with the rounding bound below that is 0.920 s at
+//! 110 millennia. The domain is not wider because this bound reaches 1 s
+//! before 115 millennia, so 120 millennia, where ERFA is still below 1 s,
+//! could not be proven this way (`tests/oracle_tdb.rs`). Outside the domain
+//! the series is not evaluated (there its arguments need the slow reduction
+//! of `sin64` for huge values, up to 23 times the cost per call, measured in
+//! a debug build), [`TdbModel::tdb_minus_tt`] returns NaN, and the
+//! conversions return [`TimeError::OutOfRange`], as they do for any shift of
+//! 1 s or more; TDB → TT is OutOfRange when the TT it finds is outside.
 //!
 //! Accuracy of the `f64` evaluation of Fb1990: within a bound derived from
 //! its arithmetic (t to 4 u relative, each argument f·t + p to
@@ -90,8 +97,8 @@ pub const FB1990_JPL_ADJUSTMENT: [[f64; 3]; 5] = [
 pub const FB1990_STATED_RANGE: (i64, i64) = (-1_577_880_000, 1_577_880_000);
 
 /// Half-width of the [`TdbModel::Fb1990`] domain, in Julian millennia from
-/// J2000 TT (130,000 Julian years; the module documentation says why).
-pub const FB1990_DOMAIN_MILLENNIA: f64 = 130.0;
+/// J2000 TT (110,000 Julian years; the module documentation says why).
+pub const FB1990_DOMAIN_MILLENNIA: f64 = 110.0;
 
 impl TdbModel {
     /// The Law this model is.
@@ -110,11 +117,27 @@ impl TdbModel {
             Self::SpiceEt => spice_et(s),
             Self::Fb1990 => {
                 let t = s / 86_400.0 / 365_250.0;
-                if t.abs() <= FB1990_DOMAIN_MILLENNIA {
+                if in_fb1990_domain(t) {
                     fb1990(t)
                 } else {
                     f64::NAN
                 }
+            }
+        }
+    }
+
+    /// [`TdbModel::tdb_minus_tt`] with t held at the ends of the Fb1990
+    /// domain, for the estimates of TDB → TT: an estimate within 1 s of an
+    /// end may lie beyond it although the TT sought does not, and an estimate
+    /// far beyond it is not evaluated at its slow huge arguments (its result
+    /// is OutOfRange anyway). Equal to it inside the domain.
+    fn tdb_minus_tt_held(self, tt: Instant<Tt>) -> f64 {
+        let s = tt.to_seconds_f64();
+        match self {
+            Self::SpiceEt => spice_et(s),
+            Self::Fb1990 => {
+                let t = s / 86_400.0 / 365_250.0;
+                fb1990(t.clamp(-FB1990_DOMAIN_MILLENNIA, FB1990_DOMAIN_MILLENNIA))
             }
         }
     }
@@ -139,15 +162,27 @@ impl Instant<Tt> {
 impl Instant<Tdb> {
     /// The TT instant whose TDB under `model` is this one (three fixed-point
     /// steps from TT = TDB; see the module documentation for the bound of a
-    /// round trip).
+    /// round trip). [`TimeError::OutOfRange`] if that TT is outside the
+    /// domain of the model.
     pub fn to_tt(self, model: TdbModel) -> Result<Instant<Tt>, TimeError> {
         let tdb: Instant<Tt> = self.relabel();
         let mut tt = tdb;
         for _ in 0..3 {
-            tt = tdb.checked_sub(to_duration(model.tdb_minus_tt(tt))?)?;
+            tt = tdb.checked_sub(to_duration(model.tdb_minus_tt_held(tt))?)?;
+        }
+        if model == TdbModel::Fb1990
+            && !in_fb1990_domain(tt.to_seconds_f64() / 86_400.0 / 365_250.0)
+        {
+            return Err(TimeError::OutOfRange);
         }
         Ok(tt)
     }
+}
+
+/// `t` (Julian millennia from J2000 TT, as the series reads it) is inside
+/// the Fb1990 domain.
+fn in_fb1990_domain(t: f64) -> bool {
+    t.abs() <= FB1990_DOMAIN_MILLENNIA
 }
 
 fn spice_et(t: f64) -> f64 {
@@ -189,7 +224,7 @@ fn to_duration(s: f64) -> Result<Duration, TimeError> {
 #[cfg(test)]
 mod tests {
     use super::to_duration;
-    use crate::{Instant, TdbModel, TimeError, Tt};
+    use crate::{Duration, Instant, TdbModel, TimeError, Tt};
 
     #[test]
     fn shifts_of_one_second_or_more_are_out_of_range() {
@@ -206,23 +241,45 @@ mod tests {
     }
 
     #[test]
-    fn fb1990_domain_ends_at_130_millennia() {
-        // 130 Julian millennia is 4_102_488_000_000 s, and t is exact there
-        let end = 130 * 365_250 * 86_400;
-        for (sec, inside) in [
-            (end, true),
-            (end + 1, false),
-            (-end, true),
-            (-end - 1, false),
+    fn fb1990_domain_ends_at_110_millennia() {
+        // 110 Julian millennia is 3_471_210_000_000 s, and t is exact there;
+        // half a second is far more than 1 ulp of the f64 seconds (2⁻¹¹ s)
+        let end = 110 * 365_250 * 86_400;
+        let half = 500_000_000_000_000_000;
+        for (sec, atto, inside) in [
+            (end, 0, true),
+            (end, half, false),
+            (end + 1, 0, false),
+            (end - 1, half, true),
+            (-end, 0, true),
+            (-end - 1, half, false),
+            (-end - 1, 0, false),
+            (-end, half, true),
         ] {
-            let tt = Instant::<Tt>::new(sec, 0).unwrap();
+            let tt = Instant::<Tt>::new(sec, atto).unwrap();
             let d = TdbModel::Fb1990.tdb_minus_tt(tt);
-            assert_eq!(d.is_nan(), !inside, "{sec}");
-            assert_eq!(tt.to_tdb(TdbModel::Fb1990).is_ok(), inside, "{sec}");
+            assert_eq!(d.is_nan(), !inside, "{sec} {atto}");
+            assert_eq!(tt.to_tdb(TdbModel::Fb1990).is_ok(), inside, "{sec} {atto}");
             if inside {
                 // the domain ends before the shift reaches 1 s
-                assert!(d.abs() < 0.99, "{sec}: {d}");
+                assert!(d.abs() < 0.99, "{sec} {atto}: {d}");
             }
+        }
+        // TT at either end goes to TDB and back; a TDB whose TT would lie
+        // beyond an end is OutOfRange
+        for sec in [end, -end] {
+            let tt = Instant::<Tt>::new(sec, 0).unwrap();
+            let tdb = tt.to_tdb(TdbModel::Fb1990).unwrap();
+            assert_eq!(tdb.to_tt(TdbModel::Fb1990), Ok(tt), "{sec}");
+            let step =
+                Duration::from_total_attoseconds(sec.signum() as i128 * 1_000_000_000_000_000_000)
+                    .unwrap();
+            let beyond = tdb.checked_add(step).unwrap();
+            assert_eq!(
+                beyond.to_tt(TdbModel::Fb1990),
+                Err(TimeError::OutOfRange),
+                "{sec}"
+            );
         }
         // the other model has no such end
         let far = Instant::<Tt>::new(end + 1, 0).unwrap();

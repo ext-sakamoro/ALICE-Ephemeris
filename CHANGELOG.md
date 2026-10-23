@@ -54,6 +54,15 @@ project adheres to [Semantic Versioning](https://semver.org/).
   taken as 0.003958°/century (≤ 2.2 mm/s). Laws `earth-epv00` and `moon98` in
   `law::ALL`. Checked against ERFA's expressions in IEEE binary64 (bounds
   derived per row), pyerfa, JPL Horizons DE441 and Meeus Example 47.a.
+- `horizon`: the Sun and the Moon in a site's sky (`sky`): geometric
+  topocentric altitude, azimuth and distance on the WGS84 ellipsoid (`Site`,
+  `Site::itrs` as ERFA `eraGd2gce`) through `frames::c2t06a` with the caller's
+  UT1 and pole coordinates, so the Moon's parallax is included; the Moon's
+  geocentric phase angle, illuminated fraction and waxing (`moon_phase`). No
+  light time, aberration or refraction. Law `sun-moon-horizon` in `law::ALL`
+  (its data holds the identifiers of `earth-epv00`, `moon98` and
+  `iau2006-2000a-cio`). Checked against JPL Horizons observer tables at four
+  sites, reached through UTC → TAI → TT and the IERS rows of the EOP excerpt.
 - Laws with semantics identifiers (`law::ALL`).
 - Reference tables generated from ERFA and CSPICE (`scripts/gen_time_golden.py`)
   and golden output digests checked on every CI platform and wasm32. The

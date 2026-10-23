@@ -27,6 +27,7 @@ part of this release.
 | GCRS → CIRS → ITRS (`frames::c2i06a`, `c2t06a`) | IAU 2006/2000A precession-nutation (1365 nutation terms), CIO locator s, ERA, polar motion | ERFA test vectors; pyerfa 1800–2200 within 2 × 10⁻¹⁶ rad (nutation), 10⁻¹⁵ (matrices) |
 | Earth and Sun (`sunmoon::epv00`) | ERFA `eraEpv00`: simplified VSOP2000 (1,951 terms), heliocentric and barycentric position and velocity, BCRS | ERFA's expressions within a derived bound (≤ 4 × 10⁻¹³ au); JPL Horizons DE441 1900–2100 within the model's 11.2 km |
 | Moon (`sunmoon::moon98`) | ERFA `eraMoon98`: Meeus (1998) series, 120 terms, rotated into the GCRS by IAU 2006 precession | ERFA's expressions within a derived bound (≤ 2 × 10⁻¹⁶ au); Meeus Example 47.a; JPL Horizons DE441 within the model's 31.7 km |
+| Sun and Moon in a site's sky (`horizon::sky`, `moon_phase`) | geometric topocentric altitude and azimuth (WGS84 site, IAU 2006/2000A celestial-to-terrestrial matrix with the caller's UT1 and pole), the Moon's phase angle, illuminated fraction and waxing | JPL Horizons observer tables at four sites: with light time and aberration added, within the models' accuracy plus 0.6″·sec φ (the pole convention); as it is, within that plus the aberration it leaves out (≤ 21.2″); ERFA's `gd2gc` test vector |
 
 ```rust
 use alice_ephemeris::{ExpiryPolicy, TdbModel, UtcDateTime};
@@ -97,7 +98,7 @@ Rust 1.85 (`rust-version` in `Cargo.toml`), checked by the CI `msrv` job.
 Each conversion is a Law with a 32-byte semantics identifier (`law::ALL`):
 `utc-tai`, `tt-tai`, `tdb-spice-et`, `tdb-fb1990`, `julian-date`,
 `ut1-tai-eop`, `era-2000`, `teme-itrs-gmst82`, `iau2006-2000a-cio`,
-`earth-epv00`, `moon98`. The
+`earth-epv00`, `moon98`, `sun-moon-horizon`. The
 identifier is the SHA-256 of the Law's name, tables and constants (as bit
 patterns), the `alice-det-math` semantics identifier where it is used, and
 the digest of its outputs over a frozen reference grid. It moves if and only
@@ -135,7 +136,11 @@ None of the expected values in `tests/golden/` comes from this crate.
   ERFA `epv00.c` and `moon98.c` by `scripts/gen_sunmoon_tables.py` (SHA-256
   pinned). Independent of ERFA: JPL Horizons DE441 states
   (`tests/data/horizons-sunmoon.csv`, `scripts/fetch_horizons_sunmoon.py`)
-  and Meeus, *Astronomical Algorithms*, Example 47.a.
+  and Meeus, *Astronomical Algorithms*, Example 47.a;
+- JPL Horizons observer tables (`tests/data/horizons-sky.csv`,
+  `scripts/fetch_horizons_sky.py`) for the sky: airless apparent azimuth and
+  elevation at four sites and the Moon's phase, at instants inside the IERS
+  rows of the EOP excerpt.
 
 The 1960–1971 TAI − UTC rows are those of ERFA `dat.c` (USNO
 `tai-utc.dat`); the Fairhead & Bretagnon coefficients are generated from

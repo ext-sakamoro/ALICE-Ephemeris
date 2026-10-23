@@ -141,8 +141,20 @@ pub const MOON_98: Law = Law {
     ],
 };
 
+/// The Sun and the Moon in a site's sky: geometric topocentric altitude and
+/// azimuth on the WGS84 ellipsoid through the IAU 2006/2000A
+/// celestial-to-terrestrial matrix, and the Moon's geocentric phase.
+pub const SUN_MOON_HORIZON: Law = Law {
+    name: "alice-ephemeris/sun-moon-horizon",
+    semantics_id: [
+        0xa9, 0x6a, 0x1e, 0xa5, 0x13, 0xc1, 0x06, 0xa5, 0x78, 0x06, 0x3d, 0xd6, 0x9e, 0x4c, 0x48,
+        0xf8, 0xb0, 0xc4, 0x6d, 0x3b, 0xb3, 0x72, 0x54, 0x8d, 0x91, 0x89, 0xd2, 0x96, 0x69, 0x2d,
+        0xab, 0x16,
+    ],
+};
+
 /// Every Law of the crate.
-pub const ALL: [Law; 11] = [
+pub const ALL: [Law; 12] = [
     UTC_TAI,
     TT_TAI,
     TDB_SPICE_ET,
@@ -154,4 +166,5 @@ pub const ALL: [Law; 11] = [
     IAU2006_CIO,
     EARTH_EPV00,
     MOON_98,
+    SUN_MOON_HORIZON,
 ];

@@ -136,3 +136,28 @@ fn whole_seconds_from_1972_are_exact() {
         .value;
     assert_eq!(end_1971, 9_892_242_000_000_000_000);
 }
+
+#[test]
+fn rows_never_shorten_a_day_below_86400_s_nor_lengthen_it_past_86401_s() {
+    // the two facts UtcDateTime::from_tai relies on: no row has a negative
+    // drift (inside a row every day lasts at least 86400 s of TAI), and no
+    // step at midnight exceeds one second (a second of day ≥ 86400 is 23:59:60)
+    for s in &SEGMENTS {
+        assert!(s.rate_e7 >= 0, "{s:?}");
+    }
+    let mut steps = 0;
+    for w in SEGMENTS.windows(2) {
+        let d = w[1].start_mjd;
+        let before = tai_minus_utc(d - 1, 86_400 * ATTO, ExpiryPolicy::Strict)
+            .unwrap()
+            .value;
+        let after = tai_minus_utc(d, 0, ExpiryPolicy::Strict).unwrap().value;
+        assert!(
+            after - before <= ATTO,
+            "step {} as at MJD {d}",
+            after - before
+        );
+        steps += 1;
+    }
+    assert_eq!(steps, SEGMENTS.len() - 1);
+}

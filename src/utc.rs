@@ -152,15 +152,15 @@ impl UtcDateTime {
             Provenance::Table
         };
         let end_mjd = SEGMENTS.get(i + 1).map_or(i64::MAX, |n| n.start_mjd);
-        // the day: TAI − UTC changes by < 0.003 s per day, so the estimate is
-        // at most one day off; step to the last day starting at or before t
+        // the day: inside a row every UTC day lasts 86400 s or longer on the
+        // TAI scale (no row has a negative rate; tests/leap_table.rs), so the
+        // estimate from 86400 s days is never early, and late by at most one
+        // day (TAI − UTC drifts < 0.003 s per day); step back to the last day
+        // that starts at or before t
         let est = (t - start_tai(seg)).div_euclid(DAY_ATTO);
         let mut mjd = seg.start_mjd + i64::try_from(est).map_err(|_| TimeError::OutOfRange)?;
-        mjd = mjd.clamp(seg.start_mjd, end_mjd - 1);
-        while mjd + 1 < end_mjd && day_start_tai(seg, mjd + 1) <= t {
-            mjd += 1;
-        }
-        while mjd > seg.start_mjd && day_start_tai(seg, mjd) > t {
+        mjd = mjd.min(end_mjd - 1);
+        while day_start_tai(seg, mjd) > t {
             mjd -= 1;
         }
         // t − label(mjd) − delat = sod·(den + R)/den + (mjd − ref)·DAY·R/den
@@ -171,8 +171,10 @@ impl UtcDateTime {
         let (year, month, day) = civil_from_mjd(mjd)?;
         let whole = sod.div_euclid(ATTO);
         let atto = sod.rem_euclid(ATTO) as u64;
+        // no UTC day lasts 86401 s or more (tests/leap_table.rs), so a second
+        // of day ≥ 86400 is the single second 23:59:60
         let (hour, minute, second) = if whole >= 86_400 {
-            (23, 59, 60 + (whole - 86_400))
+            (23, 59, 60)
         } else {
             (whole / 3600, whole % 3600 / 60, whole % 60)
         };

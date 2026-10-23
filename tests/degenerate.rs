@@ -268,3 +268,110 @@ fn julian_dates_reject_non_finite_and_huge_values() {
     };
     assert_eq!(Instant::<Tt>::from_mjd(huge), Err(TimeError::OutOfRange));
 }
+
+#[test]
+fn display_and_debug_name_the_value() {
+    assert_eq!(
+        TimeError::BeforeUtc.to_string(),
+        "UTC is not defined before 1960-01-01"
+    );
+    assert_eq!(
+        TimeError::LeapTableExpired {
+            expires_mjd: 61_584
+        }
+        .to_string(),
+        "leap-second table expired (valid before MJD 61584)"
+    );
+    assert_eq!(
+        TimeError::OutOfRange.to_string(),
+        "value out of the representable range"
+    );
+    assert_eq!(TimeError::InvalidDate.to_string(), "invalid calendar date");
+    assert_eq!(TimeError::InvalidTime.to_string(), "invalid time of day");
+    assert_eq!(
+        TimeError::NotALeapSecond.to_string(),
+        "time of day does not exist on that UTC day"
+    );
+    let t = Instant::<Tdb>::new(-5, 7).unwrap();
+    assert_eq!(format!("{t:?}"), "TDB J2000-5s+000000000000000007as");
+}
+
+#[test]
+fn positive_durations_keep_their_seconds() {
+    let a = Instant::<Tt>::new(10, 0).unwrap();
+    let b = Instant::<Tt>::new(13, 500).unwrap();
+    let d = b.duration_since(a).unwrap();
+    assert_eq!((d.seconds(), d.attoseconds()), (3, 500));
+    assert_eq!(a.checked_add(d).unwrap(), b);
+}
+
+#[test]
+fn a_day_fraction_that_rounds_to_one_moves_to_the_next_day() {
+    // 23:59:59.999… after J2000 noon + 0 days: the fraction rounds to 1.0
+    let t = Instant::<Tt>::new(86_399, ATTO_PER_SEC - 1).unwrap();
+    assert_eq!(
+        t.to_jd2(),
+        Jd2 {
+            jd1: 2_451_546.0,
+            jd2: 0.0
+        }
+    );
+    let t = Instant::<Tt>::new(-1, ATTO_PER_SEC - 1).unwrap();
+    assert_eq!(
+        t.to_jd2(),
+        Jd2 {
+            jd1: 2_451_545.0,
+            jd2: 0.0
+        }
+    );
+}
+
+#[test]
+fn the_last_tai_instant_before_the_expiry_still_has_a_label() {
+    let last = UtcDateTime::new(2027, 6, 27, 23, 59, 59, ATTO_PER_SEC - 1).unwrap();
+    let tai = last.to_tai(ExpiryPolicy::Strict).unwrap().value;
+    let back = UtcDateTime::from_tai(tai, ExpiryPolicy::Strict).unwrap();
+    assert_eq!((back.value, back.provenance), (last, Provenance::Table));
+    let one_as = Duration::new(0, 1).unwrap();
+    assert!(matches!(
+        UtcDateTime::from_tai(tai.checked_add(one_as).unwrap(), ExpiryPolicy::Strict),
+        Err(TimeError::LeapTableExpired { .. })
+    ));
+}
+
+#[test]
+fn every_day_of_the_drift_era_round_trips_at_its_last_moments() {
+    // 1960–1971: TAI − UTC drifts, so the day of a TAI instant near the end
+    // of a UTC day is found by stepping back from the 86400 s estimate
+    let mut n = 0;
+    for mjd in leap::FIRST_MJD..leap::LEAP_ERA_MJD + 2 {
+        let (y, m, d) = civil_from_mjd(mjd).unwrap();
+        for (s, atto) in [
+            (0, 0),
+            (59, 0),
+            (59, 940_000_000_000_000_000),
+            (59, 999_999_999_999_999_999),
+        ] {
+            let (h, mi) = if s == 0 { (0, 0) } else { (23, 59) };
+            let Ok(dt) = UtcDateTime::new(y, m, d, h, mi, s, atto) else {
+                continue;
+            };
+            let Ok(tai) = dt.to_tai(ExpiryPolicy::Strict) else {
+                continue;
+            };
+            let back = UtcDateTime::from_tai(tai.value, ExpiryPolicy::Strict)
+                .unwrap()
+                .value;
+            let again = back.to_tai(ExpiryPolicy::Strict).unwrap().value;
+            let diff = again.total_attoseconds() - tai.value.total_attoseconds();
+            assert!(diff.abs() <= 1, "{dt:?} -> {back:?}");
+            assert_eq!(
+                (back.year, back.month, back.day),
+                (y, m, d),
+                "{dt:?} -> {back:?}"
+            );
+            n += 1;
+        }
+    }
+    assert!(n > 15_000, "{n}");
+}

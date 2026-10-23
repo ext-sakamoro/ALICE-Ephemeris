@@ -45,10 +45,12 @@ assert_eq!(tdb.to_tt(TdbModel::Fb1990)?, tt);
   Defined from **1960-01-01T00:00:00 UTC** up to, not including, the
   leap-second table's expiry, **2027-06-28T00:00:00 UTC**. Before 1960 every
   conversion returns `TimeError::BeforeUtc`.
-- TDB − TT is evaluated in `f64` for any instant. `TdbModel::Fb1990` carries
-  ERFA's ±3 ns statement only for 1950–2050 TT
-  (`TdbModel::within_stated_accuracy`); the two models differ by at most
-  38 µs over that period (measured).
+- TDB − TT is evaluated in `f64`. `TdbModel::SpiceEt` evaluates for any
+  instant; `TdbModel::Fb1990` is defined within ±130,000 Julian years of
+  J2000 TT (`tdb::FB1990_DOMAIN_MILLENNIA`) and its conversions return
+  `TimeError::OutOfRange` outside. Fb1990 carries ERFA's ±3 ns statement
+  only for 1950–2050 TT (`TdbModel::within_stated_accuracy`); the two
+  models differ by at most 38 µs over that period (measured).
 - `to_seconds_f64` is the nearest `f64` for whole seconds and within 1 ulp
   otherwise (any `i64` second); `to_jd2` is within 1 ulp of the exact value;
   `from_jd2` is as precise as its `f64` inputs (≈ 10 ps for a day fraction).

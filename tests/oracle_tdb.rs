@@ -3,7 +3,9 @@
 
 mod common;
 use alice_det_math::max64;
-use alice_ephemeris::tdb::{fb1990_coefficients, FB1990_BLOCKS, FB1990_JPL_ADJUSTMENT};
+use alice_ephemeris::tdb::{
+    fb1990_coefficients, FB1990_BLOCKS, FB1990_DOMAIN_MILLENNIA, FB1990_JPL_ADJUSTMENT,
+};
 use alice_ephemeris::{Instant, Tdb, TdbModel, Tt};
 use common::{f64_, i64_, rows, ulps};
 
@@ -72,6 +74,11 @@ fn check_fb1990_table(name: &str, sec_col: usize) -> (usize, f64, f64) {
         let got = TdbModel::Fb1990.tdb_minus_tt(tt);
         let (erfa, exact) = (f64_(&r[sec_col + 1]), f64_(&r[sec_col + 2]));
         let t = sec as f64 / 86_400.0 / 365_250.0;
+        if t.abs() > FB1990_DOMAIN_MILLENNIA {
+            // outside the domain the series is not evaluated
+            assert!(got.is_nan(), "{r:?}: {got}");
+            continue;
+        }
         // the exact value is read back as the nearest f64: + 1 ulp of it
         let bound = fb1990_rounding_bound(t) + exact.abs() * f64::EPSILON;
         let d_exact = (got - exact).abs();
@@ -173,28 +180,37 @@ fn tdb_round_trips_within_the_documented_bound() {
 }
 
 #[test]
-fn fb1990_far_from_j2000_reaches_one_second_where_erfa_does() {
-    // ±200,000 years, far outside 1950–2050 where the series means anything:
-    // the f64 value stays within the derived bound of the exact series (which
-    // grows as t⁴), and the conversion is OutOfRange exactly where ERFA's
-    // |TDB − TT| ≥ 1 s (first near −131,600 and +147,200 years)
+fn fb1990_domain_ends_before_erfa_reaches_one_second() {
+    // ±200,000 years, far outside 1950–2050 where the series means anything.
+    // Inside the domain (±130,000 years) the f64 value stays within the
+    // derived bound of the exact series (which grows as t⁴), ERFA's
+    // |TDB − TT| is below 1 s (it first reaches 1 s near −131,600 and
+    // +147,200 years) and the conversion succeeds; outside it the conversion
+    // is OutOfRange, whatever ERFA's value
     let (n, we, wr) = check_fb1990_table("tdb_fb1990_far.csv", 1);
-    println!("Fb1990 far: {n} rows, worst |ours-exact|/bound {we:.3}, |ours-ERFA|/bound {wr:.3}");
-    let (mut ok, mut out) = (0, 0);
+    println!("Fb1990 far: {n} rows inside the domain, worst |ours-exact|/bound {we:.3}, |ours-ERFA|/bound {wr:.3}");
+    let (mut inside, mut outside, mut outside_erfa_below_1) = (0, 0, 0);
     for r in rows("tdb_fb1990_far.csv") {
-        let tt = Instant::<Tt>::new(i64_(&r[1]), 0).unwrap();
+        let sec = i64_(&r[1]);
+        let tt = Instant::<Tt>::new(sec, 0).unwrap();
         let erfa = f64_(&r[2]);
-        match tt.to_tdb(TdbModel::Fb1990) {
-            Ok(_) => {
-                assert!(erfa.abs() < 1.0, "{r:?}");
-                ok += 1;
-            }
-            Err(e) => {
-                assert_eq!(e, alice_ephemeris::TimeError::OutOfRange);
-                assert!(erfa.abs() >= 1.0, "{r:?}");
-                out += 1;
-            }
+        if (sec as f64 / 86_400.0 / 365_250.0).abs() <= FB1990_DOMAIN_MILLENNIA {
+            assert!(erfa.abs() < 1.0, "{r:?}");
+            assert!(tt.to_tdb(TdbModel::Fb1990).is_ok(), "{r:?}");
+            inside += 1;
+        } else {
+            assert_eq!(
+                tt.to_tdb(TdbModel::Fb1990),
+                Err(alice_ephemeris::TimeError::OutOfRange),
+                "{r:?}"
+            );
+            outside += 1;
+            outside_erfa_below_1 += usize::from(erfa.abs() < 1.0);
         }
     }
-    assert!(ok > 50 && out > 20, "{ok} / {out}");
+    println!("Fb1990 far: {inside} inside, {outside} outside ({outside_erfa_below_1} of them with ERFA below 1 s)");
+    assert!(
+        inside > 50 && outside > 20 && n == inside,
+        "{inside} / {outside} / {n}"
+    );
 }

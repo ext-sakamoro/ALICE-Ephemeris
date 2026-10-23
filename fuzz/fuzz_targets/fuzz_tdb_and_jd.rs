@@ -1,8 +1,8 @@
 //! TT → TDB → TT returns within 2 |dΔ/dt| ulp(TT) (+1 as) whenever the conversion succeeds (it
-//! returns OutOfRange once |TDB − TT| ≥ 1 s, which the Fb1990 polynomial
-//! terms reach millions of years from J2000), and from_jd2 never panics on
-//! any pair of f64.
+//! returns OutOfRange once |TDB − TT| ≥ 1 s, and for Fb1990 outside its domain of
+//! ±130,000 years, where the shift is NaN), and from_jd2 never panics on any pair of f64.
 #![no_main]
+use alice_ephemeris::tdb::FB1990_DOMAIN_MILLENNIA;
 use alice_ephemeris::{Instant, Jd2, TdbModel, Tt};
 use libfuzzer_sys::fuzz_target;
 
@@ -11,7 +11,12 @@ fuzz_target!(|d: (i64, u64, bool, f64, f64)| {
     let model = if fb { TdbModel::Fb1990 } else { TdbModel::SpiceEt };
     if let Ok(tt) = Instant::<Tt>::new(sec, atto % 1_000_000_000_000_000_000) {
         let delta = model.tdb_minus_tt(tt);
-        assert!(delta.is_finite(), "{tt:?}: {delta}");
+        let t = tt.to_seconds_f64() / 86_400.0 / 365_250.0;
+        let inside = !fb || t.abs() <= FB1990_DOMAIN_MILLENNIA;
+        assert_eq!(delta.is_finite(), inside, "{tt:?}: {delta}");
+        if !inside {
+            assert!(tt.to_tdb(model).is_err(), "{tt:?}");
+        }
         if let Ok(tdb) = tt.to_tdb(model) {
             assert!(delta.abs() < 1.0);
             if let Ok(back) = tdb.to_tt(model) {

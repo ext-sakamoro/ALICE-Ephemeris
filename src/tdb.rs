@@ -12,11 +12,16 @@
 //! 2100, ≤ 2 ns at 3 × 10⁸ years from J2000 (SpiceEt; Fb1990 is the same near
 //! J2000 and grows with its polynomial terms).
 //!
-//! Both models evaluate for any instant. The Fb1990 series is only
-//! meaningful around 1950–2050; far from J2000 its T¹…T⁴ terms grow without
-//! bound, and once |TDB − TT| reaches 1 s (first about 1.3 × 10⁵ years before
-//! and 1.5 × 10⁵ years after J2000, as for ERFA's eraDtdb) the conversions
-//! return [`TimeError::OutOfRange`] instead of a meaningless shift.
+//! SpiceEt evaluates for any instant. The Fb1990 series is only meaningful
+//! around 1950–2050; far from J2000 its T¹…T⁴ terms grow without bound, and
+//! |TDB − TT| first reaches 1 s about 1.3 × 10⁵ years before and 1.5 × 10⁵
+//! years after J2000 (as for ERFA's eraDtdb). Its domain is therefore
+//! |t| ≤ [`FB1990_DOMAIN_MILLENNIA`] Julian millennia from J2000 TT (t as
+//! the series reads it, from the nearest `f64` of TT), inside
+//! which |TDB − TT| < 1 s: outside it the series is not evaluated (there its
+//! arguments need the slow reduction of `sin64` for huge values, 20 times
+//! the cost), [`TdbModel::tdb_minus_tt`] returns NaN, and the conversions
+//! return [`TimeError::OutOfRange`], as they do for any shift of 1 s or more.
 //!
 //! Accuracy of the `f64` evaluation of Fb1990: within a bound derived from
 //! its arithmetic (t to 4 u relative, each argument f·t + p to
@@ -84,6 +89,10 @@ pub const FB1990_JPL_ADJUSTMENT: [[f64; 3]; 5] = [
 /// [`TdbModel::Fb1990`]: 1950-01-01T00:00 TT to 2050-01-01T00:00 TT.
 pub const FB1990_STATED_RANGE: (i64, i64) = (-1_577_880_000, 1_577_880_000);
 
+/// Half-width of the [`TdbModel::Fb1990`] domain, in Julian millennia from
+/// J2000 TT (130,000 Julian years; the module documentation says why).
+pub const FB1990_DOMAIN_MILLENNIA: f64 = 130.0;
+
 impl TdbModel {
     /// The Law this model is.
     pub const fn law(self) -> Law {
@@ -93,12 +102,20 @@ impl TdbModel {
         }
     }
 
-    /// TDB − TT in seconds at TT instant `tt`.
+    /// TDB − TT in seconds at TT instant `tt`; NaN for [`TdbModel::Fb1990`]
+    /// outside its domain ([`FB1990_DOMAIN_MILLENNIA`]).
     pub fn tdb_minus_tt(self, tt: Instant<Tt>) -> f64 {
         let s = tt.to_seconds_f64();
         match self {
             Self::SpiceEt => spice_et(s),
-            Self::Fb1990 => fb1990(s / 86_400.0 / 365_250.0),
+            Self::Fb1990 => {
+                let t = s / 86_400.0 / 365_250.0;
+                if t.abs() <= FB1990_DOMAIN_MILLENNIA {
+                    fb1990(t)
+                } else {
+                    f64::NAN
+                }
+            }
         }
     }
 
@@ -172,7 +189,7 @@ fn to_duration(s: f64) -> Result<Duration, TimeError> {
 #[cfg(test)]
 mod tests {
     use super::to_duration;
-    use crate::TimeError;
+    use crate::{Instant, TdbModel, TimeError, Tt};
 
     #[test]
     fn shifts_of_one_second_or_more_are_out_of_range() {
@@ -186,5 +203,29 @@ mod tests {
             (-1, 750_000_000_000_000_000)
         );
         assert!(to_duration(0.999_999_999_999_999_9).is_ok());
+    }
+
+    #[test]
+    fn fb1990_domain_ends_at_130_millennia() {
+        // 130 Julian millennia is 4_102_488_000_000 s, and t is exact there
+        let end = 130 * 365_250 * 86_400;
+        for (sec, inside) in [
+            (end, true),
+            (end + 1, false),
+            (-end, true),
+            (-end - 1, false),
+        ] {
+            let tt = Instant::<Tt>::new(sec, 0).unwrap();
+            let d = TdbModel::Fb1990.tdb_minus_tt(tt);
+            assert_eq!(d.is_nan(), !inside, "{sec}");
+            assert_eq!(tt.to_tdb(TdbModel::Fb1990).is_ok(), inside, "{sec}");
+            if inside {
+                // the domain ends before the shift reaches 1 s
+                assert!(d.abs() < 0.99, "{sec}: {d}");
+            }
+        }
+        // the other model has no such end
+        let far = Instant::<Tt>::new(end + 1, 0).unwrap();
+        assert!(far.to_tdb(TdbModel::SpiceEt).is_ok());
     }
 }

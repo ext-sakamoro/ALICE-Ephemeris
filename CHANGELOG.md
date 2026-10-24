@@ -6,6 +6,11 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `alice-det-math` を git rev `6384856c` (0.5.2) で引く
+- manifest の authors から address を外した
+
 ### Added
 
 - `Instant<S>` on the `Tai`, `Tt` and `Tdb` scales: `i64` seconds since

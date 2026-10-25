@@ -146,6 +146,11 @@ The 1960–1971 TAI − UTC rows are those of ERFA `dat.c` (USNO
 `tai-utc.dat`); the Fairhead & Bretagnon coefficients are generated from
 ERFA `dtdb.c` by `scripts/gen_fb1990_table.py` (source file SHA-256 pinned).
 
+## Third-party components
+
+Third-party components keep their own licenses (ERFA BSD-3-Clause, alice-det-math
+Apache-2.0, the leap-second file public domain); see `THIRD-PARTY-NOTICES`.
+
 ## License
 
 `LicenseRef-Proprietary`. The text is [LICENSE-Proprietary](LICENSE-Proprietary).

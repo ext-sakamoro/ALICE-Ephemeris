@@ -18,7 +18,7 @@
 //!
 //! Accuracy of the models themselves (ERFA's notes): the Earth within 11.2 km
 //! (heliocentric) and 13.4 km (barycentric) of DE405 over 1900–2100; the Moon
-//! within 18.3″ in direction and 31.7 km in position of DE404 over 1950–2050
+//! within 18.3″ in direction and 31.7 km in position of ELP/MPP02 over 1950–2100
 //! (2.9″ and 6.1 km RMS).
 
 use alice_det_math::sin_cos64;
@@ -62,8 +62,9 @@ pub struct EarthPv {
 pub struct MoonPv {
     /// Geocentric position (au) and velocity (au/day).
     pub geocentric: Pv,
-    /// The date lies within 1950–2050 (`|T| ≤ 0.5` Julian centuries from
-    /// J2000.0), the span of ERFA's quoted accuracy (ERFA's routine has no
+    /// The date lies within 1950–2100 (T from −0.5 to +1.0 Julian centuries
+    /// from J2000.0), the span of ERFA's quoted accuracy (its comparison with
+    /// ELP/MPP02) (ERFA's routine has no
     /// status; this flag is the only sign of a date outside it).
     pub in_range: bool,
 }
@@ -350,6 +351,6 @@ pub fn moon98(tt: Jd2) -> MoonPv {
     rz(-fw.gamb, &mut rm);
     MoonPv {
         geocentric: [mxv(&rm, pv[0]), mxv(&rm, pv[1])],
-        in_range: t.abs() <= 0.5,
+        in_range: (-0.5..=1.0).contains(&t),
     }
 }

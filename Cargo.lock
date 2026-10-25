@@ -9,7 +9,7 @@ source = "git+https://github.com/ext-sakamoro/ALICE-DetMath?rev=6384856c8b00f161
 
 [[package]]
 name = "alice-ephemeris"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "alice-det-math",
  "sha1",

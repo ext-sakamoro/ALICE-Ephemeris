@@ -96,7 +96,7 @@ fn earth_outputs(v: &[Jd2]) -> Vec<u8> {
 
 fn moon_outputs(v: &[Jd2]) -> Vec<u8> {
     v.iter()
-        .flat_map(|&d| pv_bytes(&moon98(d)).collect::<Vec<u8>>())
+        .flat_map(|&d| pv_bytes(&moon98(d).geocentric).collect::<Vec<u8>>())
         .collect()
 }
 

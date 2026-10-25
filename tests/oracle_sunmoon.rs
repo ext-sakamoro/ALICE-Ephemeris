@@ -38,7 +38,7 @@ fn earth_and_moon_match_the_erfa_expressions_within_the_derived_bounds() {
         let want: Vec<f64> = r[2..20].iter().map(|s| f64_(s)).collect();
         let bound: Vec<f64> = r[20..26].iter().map(|s| f64_(s)).collect();
         let e = epv00(d);
-        let m = moon98(d);
+        let m = moon98(d).geocentric;
         let got = [
             e.heliocentric[0],
             e.heliocentric[1],
@@ -101,7 +101,7 @@ const AU_KM: f64 = 149_597_870.7;
 #[test]
 fn moon_reproduces_meeus_example_47a() {
     let d = jd(2_448_724.5, 0.0);
-    let p = mtxv(&ecliptic_to_gcrs(d), moon98(d)[0]);
+    let p = mtxv(&ecliptic_to_gcrs(d), moon98(d).geocentric[0]);
     let (lon, lat, r) = spherical(p);
     let light_time = 218.316_654_36 - 218.316_447_7;
     assert!((lon - light_time - 133.162_655).abs() <= 1e-6, "λ {lon}");
@@ -126,7 +126,7 @@ fn sun_and_moon_agree_with_jpl_horizons_within_the_stated_accuracy() {
         let want: Vec<f64> = r[2..8].iter().map(|s| f64_(s)).collect();
         let (got, bound_p, bound_v) = match r[0].as_str() {
             "sun" => (epv00(d).sun_geocentric(), 11.2 * km, 5.0 * mm_s),
-            "moon" => (moon98(d), 31.7 * km, 172.0 * mm_s),
+            "moon" => (moon98(d).geocentric, 31.7 * km, 172.0 * mm_s),
             other => panic!("unknown body {other}"),
         };
         let dist = |a: [f64; 3], b: &[f64]| {
@@ -184,13 +184,13 @@ fn velocities_are_the_derivatives_of_the_positions() {
     // rotated with the matrix of the epoch
     let moon = |day: f64| {
         let d = jd(2_451_545.0, day);
-        mtxv(&ecliptic_to_gcrs(d), moon98(d)[0])
+        mtxv(&ecliptic_to_gcrs(d), moon98(d).geocentric[0])
     };
     let mut compared = 0;
     for k in 0..40 {
         let day = -36_000.0 + 1_801.3 * f64::from(k);
         let d = jd(2_451_545.0, day);
-        let (e, m) = (epv00(d), moon98(d));
+        let (e, m) = (epv00(d), moon98(d).geocentric);
         for c in 0..3 {
             let dh = five_point(&helio, day, c) - e.heliocentric[1][c];
             let db = five_point(&bary, day, c) - e.barycentric[1][c];
@@ -213,6 +213,22 @@ fn the_range_flag_is_erfas_status() {
     assert!(!epv00(jd(2_451_545.0, -36_525.1)).in_range);
 }
 
+/// The Moon's `in_range` is the span of ERFA's quoted accuracy for `eraMoon98`
+/// (1950–2050: |T| ≤ 0.5 Julian centuries from J2000.0); ERFA's routine has no
+/// status, so the flag is what tells a caller the date is outside it
+#[test]
+fn the_moon_flags_dates_outside_its_quoted_span() {
+    assert!(moon98(jd(2_451_545.0, 0.0)).in_range);
+    assert!(moon98(jd(2_451_545.0, 18_262.5)).in_range);
+    assert!(moon98(jd(2_451_545.0, -18_262.5)).in_range);
+    assert!(!moon98(jd(2_451_545.0, 18_262.6)).in_range);
+    assert!(!moon98(jd(2_451_545.0, -18_262.6)).in_range);
+    assert!(!moon98(jd(2_451_545.0, 73_050.0)).in_range);
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(!moon98(jd(2_451_545.0, bad)).in_range);
+    }
+}
+
 /// A non-finite date gives non-finite vectors (no panic, no finite garbage)
 /// and the Earth flags it out of range.
 #[test]
@@ -222,6 +238,6 @@ fn a_non_finite_date_gives_non_finite_vectors() {
         let e = epv00(d);
         assert!(!e.in_range);
         assert!(e.heliocentric.iter().flatten().all(|v| !v.is_finite()));
-        assert!(moon98(d).iter().flatten().all(|v| !v.is_finite()));
+        assert!(moon98(d).geocentric.iter().flatten().all(|v| !v.is_finite()));
     }
 }

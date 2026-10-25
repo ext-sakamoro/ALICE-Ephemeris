@@ -148,7 +148,6 @@ ERFA `dtdb.c` by `scripts/gen_fb1990_table.py` (source file SHA-256 pinned).
 
 ## License
 
-Copyright (c) 2026 Moroya Sakamoto. All rights reserved; no license is
-granted (see `LICENSE`). Third-party components keep their own licenses
-(ERFA BSD-3-Clause, alice-det-math Apache-2.0, the leap-second file public
-domain); see `THIRD-PARTY-NOTICES`.
+`LicenseRef-Proprietary`. The text is [LICENSE-Proprietary](LICENSE-Proprietary).
+
+Enquiries: https://extoria.co.jp/

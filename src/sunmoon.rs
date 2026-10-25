@@ -57,6 +57,17 @@ pub struct EarthPv {
     pub in_range: bool,
 }
 
+/// The Moon's position and velocity with respect to the GCRS.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MoonPv {
+    /// Geocentric position (au) and velocity (au/day).
+    pub geocentric: Pv,
+    /// The date lies within 1950–2050 (`|T| ≤ 0.5` Julian centuries from
+    /// J2000.0), the span of ERFA's quoted accuracy (ERFA's routine has no
+    /// status; this flag is the only sign of a date outside it).
+    pub in_range: bool,
+}
+
 impl EarthPv {
     /// The geocentric position (au) and velocity (au/day) of the Sun.
     pub fn sun_geocentric(&self) -> Pv {
@@ -173,8 +184,9 @@ fn s2pv(theta: f64, phi: f64, r: f64, td: f64, pd: f64, rd: f64) -> Pv {
 }
 
 /// The Moon's geocentric position (au) and velocity (au/day) with respect to
-/// the GCRS at TT Julian date `tt` (ERFA `eraMoon98`).
-pub fn moon98(tt: Jd2) -> Pv {
+/// the GCRS at TT Julian date `tt` (ERFA `eraMoon98`), and whether the date
+/// is within the span of the quoted accuracy.
+pub fn moon98(tt: Jd2) -> MoonPv {
     let t = ((tt.jd1 - DJ00) + tt.jd2) / DJC;
 
     // Moon's mean longitude, mean elongation, Sun's mean anomaly, Moon's mean
@@ -336,5 +348,8 @@ pub fn moon98(tt: Jd2) -> Pv {
     rz(fw.psib, &mut rm);
     rx(-fw.phib, &mut rm);
     rz(-fw.gamb, &mut rm);
-    [mxv(&rm, pv[0]), mxv(&rm, pv[1])]
+    MoonPv {
+        geocentric: [mxv(&rm, pv[0]), mxv(&rm, pv[1])],
+        in_range: t.abs() <= 0.5,
+    }
 }

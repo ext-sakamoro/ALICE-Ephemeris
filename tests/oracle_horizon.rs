@@ -247,7 +247,7 @@ fn sun_and_moon_agree_with_jpl_horizons() {
             let sun = e.sun_geocentric();
             (sun[0], add(e.barycentric[1], e.heliocentric[1], -1.0))
         } else {
-            let m = moon98(tt);
+            let m = moon98(tt).geocentric;
             (m[0], add(m[1], v_earth, 1.0))
         };
         let app = apparent(&c2t, &s, geo, v_body, v_earth);

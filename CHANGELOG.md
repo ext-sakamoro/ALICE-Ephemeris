@@ -8,6 +8,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Breaking:** 破壊的変更: `sunmoon::moon98` は `Pv` でなく `MoonPv { geocentric, in_range }` を返す `in_range` は日付が ERFA の精度の範囲 (1950–2050、J2000.0 から |T| ≤ 0.5 Julian 世紀) にあるか (ERFA の routine は状態を返さない) 位置と速度の値と `law::MOON98` の識別子は変わらない
 - `alice-det-math` を git rev `6384856c` (0.5.2) で引く
 - manifest の authors から address を外した
 

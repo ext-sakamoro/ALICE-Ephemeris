@@ -131,7 +131,7 @@ fn phase(sun: [f64; 3], moon: [f64; 3], tt: Jd2) -> MoonPhase {
 /// The Moon's phase at TT Julian date `tt`, from the geocentric directions of
 /// the Sun and the Moon.
 pub fn moon_phase(tt: Jd2) -> MoonPhase {
-    phase(epv00(tt).sun_geocentric()[0], moon98(tt)[0], tt)
+    phase(epv00(tt).sun_geocentric()[0], moon98(tt).geocentric[0], tt)
 }
 
 /// A geocentric GCRS position (au) as seen from the site.
@@ -166,7 +166,7 @@ pub fn sky(tt: Jd2, ut1: Jd2, xp: f64, yp: f64, site: &Site) -> Sky {
     let c2t = c2t06a(tt, ut1, xp, yp);
     let site_itrs = site.itrs();
     let sun = epv00(tt).sun_geocentric()[0];
-    let moon = moon98(tt)[0];
+    let moon = moon98(tt).geocentric[0];
     Sky {
         sun: horizontal(sun, &c2t, site, site_itrs),
         moon: horizontal(moon, &c2t, site, site_itrs),

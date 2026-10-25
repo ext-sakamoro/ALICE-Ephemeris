@@ -214,15 +214,18 @@ fn the_range_flag_is_erfas_status() {
 }
 
 /// The Moon's `in_range` is the span of ERFA's quoted accuracy for `eraMoon98`
-/// (1950–2050: |T| ≤ 0.5 Julian centuries from J2000.0); ERFA's routine has no
-/// status, so the flag is what tells a caller the date is outside it
+/// (its note 3: compared with ELP/MPP02 over 1950–2100, T from −0.5 to +1.0
+/// Julian centuries from J2000.0); ERFA's routine has no status, so the flag is
+/// what tells a caller the date is outside it
 #[test]
 fn the_moon_flags_dates_outside_its_quoted_span() {
+    // 36 525 days per Julian century: 1950.0 is −18 262.5 d, 2100.0 is +36 525 d
     assert!(moon98(jd(2_451_545.0, 0.0)).in_range);
-    assert!(moon98(jd(2_451_545.0, 18_262.5)).in_range);
     assert!(moon98(jd(2_451_545.0, -18_262.5)).in_range);
-    assert!(!moon98(jd(2_451_545.0, 18_262.6)).in_range);
+    assert!(moon98(jd(2_451_545.0, 27_393.75)).in_range); // 2075
+    assert!(moon98(jd(2_451_545.0, 36_525.0)).in_range);
     assert!(!moon98(jd(2_451_545.0, -18_262.6)).in_range);
+    assert!(!moon98(jd(2_451_545.0, 36_525.1)).in_range);
     assert!(!moon98(jd(2_451_545.0, 73_050.0)).in_range);
     for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         assert!(!moon98(jd(2_451_545.0, bad)).in_range);

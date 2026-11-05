@@ -62,10 +62,6 @@ checks! {
     check_sunmoon_bench_sky_digest => law_ids_sunmoon::bench_sky_digest_check,
 }
 
-/// Cost probe for the runner (reported, not gated): `n` evaluations of the
-/// Sun and Moon at the inputs of `bench_sky_digest` (tests/law_ids_sunmoon.rs,
-/// whose digest the `check_sunmoon_bench_sky_digest` export asserts). Returns
-/// the sum of the Sun's altitudes so the work cannot be optimised away.
 /// The `alice_det_math::SEMANTICS_ID` this build computes with (32 bytes at the returned
 /// pointer), printed by the runner so a log says which arithmetic the browser build ran.
 #[no_mangle]
@@ -73,6 +69,10 @@ pub extern "C" fn det_math_semantics_id() -> *const u8 {
     alice_det_math::SEMANTICS_ID.as_ptr()
 }
 
+/// Cost probe for the runner (reported, not gated): `n` evaluations of the
+/// Sun and Moon at the inputs of `bench_sky_digest` (tests/law_ids_sunmoon.rs,
+/// whose digest the `check_sunmoon_bench_sky_digest` export asserts). Returns
+/// the sum of the Sun's altitudes so the work cannot be optimised away.
 #[no_mangle]
 pub extern "C" fn bench_sky(n: u32) -> f64 {
     let mut acc = 0.0;

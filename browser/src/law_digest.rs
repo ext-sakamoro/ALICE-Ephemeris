@@ -34,25 +34,43 @@ pub fn law_id(name: &str, data: &[u8], grid: (&str, usize), reference: &str) -> 
     h.finalize()
 }
 
-/// An incremental SHA-256.
+/// An incremental SHA-256 that counts the bytes it consumed.
 #[derive(Default)]
-pub struct Hasher(Sha256);
+pub struct Hasher {
+    sha: Sha256,
+    len: u64,
+}
 
 impl Hasher {
     /// An empty hash.
     #[must_use]
     pub fn new() -> Self {
-        Self(Sha256::new())
+        Self::default()
     }
 
     /// Append `bytes`.
     pub fn update(&mut self, bytes: impl AsRef<[u8]>) {
-        self.0.update(bytes);
+        let bytes = bytes.as_ref();
+        self.len += bytes.len() as u64;
+        self.sha.update(bytes);
+    }
+
+    /// Number of bytes appended so far (what a check compared, as opposed to how many times
+    /// its loop ran).
+    #[must_use]
+    pub fn len(&self) -> u64 {
+        self.len
+    }
+
+    /// Nothing appended yet.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     /// The digest of everything appended.
     #[must_use]
     pub fn finalize(self) -> [u8; 32] {
-        self.0.finalize().into()
+        self.sha.finalize().into()
     }
 }

@@ -332,7 +332,11 @@ pub(crate) fn bench_sky_digest_check() {
     }
     // what the digest actually consumed: four f64 per evaluation (an empty or short loop
     // would hash fewer bytes, and an empty hash has a digest too)
-    assert!(h.len() > 0, "nothing hashed");
-    assert_eq!(h.len(), u64::from(BENCH_SKY_COUNT) * 4 * 8, "evaluations hashed");
+    assert!(!h.is_empty(), "nothing hashed");
+    assert_eq!(
+        h.len(),
+        u64::from(BENCH_SKY_COUNT) * 4 * 8,
+        "evaluations hashed"
+    );
     assert_eq!(hex(&h.finalize()), BENCH_SKY_DIGEST);
 }

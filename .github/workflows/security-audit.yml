@@ -61,6 +61,12 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: bnjbvr/cargo-machete@main
+      # a dependency machete cannot see used is made visible, never listed as ignored: no
+      # Cargo.toml (root, browser/, fuzz/) may carry cargo-machete metadata
+      - name: No cargo-machete ignore list in any manifest (tests, then check)
+        run: |
+          python3 scripts/test_machete_metadata_check.py
+          python3 scripts/machete_metadata_check.py .
 
   stub-guard:
     name: Stub / dbg / libm guard (grep)

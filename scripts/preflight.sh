@@ -542,6 +542,16 @@ step "security-audit.yml / unused-deps: cargo machete"
 cargo machete
 )
 
+step "security-audit.yml / unused-deps: No cargo-machete ignore list in any manifest (tests, then check)"
+(
+  gh_step security-audit.yml.unused-deps
+(
+  export CARGO_TERM_COLOR="always" CARGO_NET_RETRY="5"
+  python3 scripts/test_machete_metadata_check.py
+  python3 scripts/machete_metadata_check.py .
+)
+)
+
 step "security-audit.yml / stub-guard: Detect todo! / unimplemented! / panic!(STUB) / dbg!"
 (
   gh_step security-audit.yml.stub-guard

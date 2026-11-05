@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `horizon::sky_at_unix_ms(unix_ms, &site)`: Unix ミリ秒 (browser の時計) で表した UTC の時刻の空 TT は UTC の表記から閏秒の表を通して作り (表の期限を過ぎたら新しい閏秒は無いとみなす)、UT1 は UTC とし (|UT1 − UTC| < 0.9 s、空の回転で ≤ 14″)、極の座標は 0 UTC の始まり (1960) より前は `TimeError::BeforeUtc` 試験 `tests/horizon_unix.rs` (2026 年 3 月の分点で太陽直下点の高度 > 89° と対蹠点 < −89°、2026 年の TT − UTC = 37 s + 32.184 s を外から与えた `horizon::sky` と 1e-11 rad 以内、1960 より前は誤り) 変異 4 本 (UT1 に TT / 閏秒なし / 月と日の入替 / ミリ秒落ち) はそれぞれ red
+- `browser/` の export `sun_alt_az(unix_ms, latitude_deg, longitude_deg)`: page が `Date.now()` と度で呼び、返した pointer に太陽の高度と方位 (radian) を 2 つの `f64` で書く 整数でないミリ秒・1960 より前・有限でない場所は NaN `tests/law_ids_sunmoon.rs` の `unix_sky_digest` (1972〜2099 の 12 時刻 × 5 地点の出力の digest を固定) を native と wasm32-unknown-unknown の両方で走らせ (browser の検査は 12 本)、`scripts/run_browser_wasm.mjs` が export を page と同じ呼び方で呼んで分点の太陽直下点で > 89°、対蹠点で < −89°、不正な入力で NaN を確かめる (経度の符号を反転すると red)
 - CI の `browser` job: `tests/law_ids*.rs` の Law 識別子の検査と bench の太陽と月の出力の digest (11 本) を
   wasm32-unknown-unknown (web page が読む target) で build し node で実行する
   (`browser/`、`scripts/run_browser_wasm.sh`) 1 本でも trap する / 0 本 / 本数が

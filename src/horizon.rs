@@ -159,6 +159,60 @@ fn horizontal(gcrs: [f64; 3], c2t: &Mat3, site: &Site, site_itrs: [f64; 3]) -> H
     }
 }
 
+/// The Sun and the Moon in `site`'s sky at a UTC time given as Unix
+/// milliseconds (what a browser's clock reads), for a page that has no Earth
+/// orientation data: TT comes from the UTC label through the leap second table
+/// (past its expiry, no new leap second is assumed, [`ExpiryPolicy::AssumeNoNewLeapSeconds`]),
+/// UT1 is taken as UTC (|UT1 − UTC| < 0.9 s turns the sky by ≤ 14″) and the
+/// pole coordinates as zero (≤ 0.5″).
+///
+/// # Errors
+///
+/// [`TimeError::BeforeUtc`] for a time before UTC (1960). Every later time
+/// gives a sky; the Sun and Moon models are fitted to 1900–2100, beyond that
+/// the angles are extrapolations.
+///
+/// [`TimeError`]: crate::TimeError
+/// [`TimeError::BeforeUtc`]: crate::TimeError::BeforeUtc
+///
+/// [`ExpiryPolicy::AssumeNoNewLeapSeconds`]: crate::ExpiryPolicy::AssumeNoNewLeapSeconds
+pub fn sky_at_unix_ms(unix_ms: i64, site: &Site) -> Result<Sky, crate::TimeError> {
+    const MS_PER_DAY: i64 = 86_400_000;
+    // 1970-01-01 is MJD 40587
+    let day = unix_ms.div_euclid(MS_PER_DAY);
+    let ms = unix_ms.rem_euclid(MS_PER_DAY);
+    let mjd = day
+        .checked_add(40_587)
+        .ok_or(crate::TimeError::OutOfRange)?;
+    let (year, month, dom) = crate::civil_from_mjd(mjd)?;
+    let sec = ms / 1000;
+    // the fields are in range by construction (ms < 86 400 000)
+    let label = crate::UtcDateTime::new(
+        year,
+        field_u8(month),
+        field_u8(dom),
+        field_u8(sec / 3600),
+        field_u8(sec / 60 % 60),
+        field_u8(sec % 60),
+        (ms % 1000) as u64 * 1_000_000_000_000_000,
+    )?;
+    let tt = label
+        .to_tai(crate::ExpiryPolicy::AssumeNoNewLeapSeconds)?
+        .value
+        .to_tt()?
+        .to_jd2();
+    let ut1 = Jd2 {
+        jd1: 2_400_000.5 + mjd as f64,
+        jd2: ms as f64 / 86_400_000.0,
+    };
+    Ok(sky(tt, ut1, 0.0, 0.0, site))
+}
+
+/// A calendar or clock field (always < 256 here) as `u8`
+fn field_u8(v: impl TryInto<u8>) -> u8 {
+    v.try_into().unwrap_or(u8::MAX)
+}
+
 /// The Sun and the Moon in `site`'s sky at TT Julian date `tt` and UT1 Julian
 /// date `ut1`, with the pole coordinates `xp`, `yp` (radians; zero when
 /// unknown, which moves the directions by ≤ 0.5″).

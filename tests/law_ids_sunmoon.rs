@@ -340,3 +340,63 @@ pub(crate) fn bench_sky_digest_check() {
     );
     assert_eq!(hex(&h.finalize()), BENCH_SKY_DIGEST);
 }
+
+/// Unix-millisecond inputs of `horizon::sky_at_unix_ms` (the entry a browser page calls with
+/// its clock): twelve instants from 1972 to 2099 at five sites
+fn unix_sky_inputs() -> Vec<(i64, Site)> {
+    let sites = [
+        (0.0, 0.0),
+        (0.611, 2.440),
+        (-0.59, -1.2),
+        (1.2, -0.3),
+        (-1.4, 3.0),
+    ];
+    let mut v = Vec::new();
+    for k in 0..12i64 {
+        // 63 072 000 000 = 1972-01-01; a step of 335.37 days and an odd number of milliseconds
+        let ms = 63_072_000_000 + k * 28_975_968_123;
+        let (lat, lon) = sites[(k % 5) as usize];
+        v.push((
+            ms,
+            Site {
+                latitude: lat,
+                longitude: lon,
+                height: 0.0,
+            },
+        ));
+    }
+    v
+}
+
+fn unix_sky_outputs(v: &[(i64, Site)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (ms, s) in v {
+        let sky = horizon::sky_at_unix_ms(*ms, s).expect("a time after 1972");
+        for h in [sky.sun, sky.moon] {
+            for x in [h.altitude, h.azimuth, h.distance] {
+                out.extend(x.to_bits().to_le_bytes());
+            }
+        }
+    }
+    out
+}
+
+/// The digest of `unix_sky_outputs(&unix_sky_inputs())` on every target
+const REFERENCE_UNIX_SKY: &str = "bc912184882f5aa592aa7db166679f1bde84697fe75192880521f585a90bd318";
+
+#[test]
+fn unix_sky_digest() {
+    unix_sky_digest_check();
+}
+
+/// The check behind `unix_sky_digest`, also run on wasm32-unknown-unknown by `browser/`
+/// (scripts/run_browser_wasm.sh): the browser entry gives the same bits as the native one
+pub(crate) fn unix_sky_digest_check() {
+    let bytes = unix_sky_outputs(&unix_sky_inputs());
+    assert_eq!(bytes.len(), 12 * 6 * 8, "outputs");
+    let got = digest(&bytes);
+    assert_eq!(
+        got, REFERENCE_UNIX_SKY,
+        "const REFERENCE_UNIX_SKY: &str = \"{got}\";"
+    );
+}

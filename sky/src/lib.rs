@@ -19,21 +19,21 @@ static mut SUN_ALT_AZ: [f64; 2] = [0.0; 2];
 /// The Sun's topocentric altitude and azimuth (radians, azimuth from north through east) for a
 /// page: `unix_ms` is the browser's clock (`Date.now()`), the site in degrees. Writes the two
 /// values at the returned pointer (read as a `Float64Array` of length 2), both NaN when the
-/// time is not an integral number of milliseconds after UTC began (1960) or the site is not
-/// finite. Through [`sky_at_unix_ms`] (UT1 taken as UTC, pole coordinates zero).
+/// time is not an integral number of milliseconds after UTC began (1960) or the site is not on
+/// the earth (not finite, |latitude| > 90, |longitude| > 180). Through [`sky_at_unix_ms`] (UT1 taken as UTC, pole coordinates zero).
 #[no_mangle]
 pub extern "C" fn sun_alt_az(unix_ms: f64, latitude_deg: f64, longitude_deg: f64) -> *const f64 {
     const DEG: f64 = core::f64::consts::PI / 180.0;
-    let valid_ms = unix_ms.is_finite()
+    let valid = unix_ms.is_finite()
         && unix_ms == (unix_ms as i64) as f64
-        && latitude_deg.is_finite()
-        && longitude_deg.is_finite();
+        && latitude_deg.abs() <= 90.0
+        && longitude_deg.abs() <= 180.0;
     let site = Site {
         latitude: latitude_deg * DEG,
         longitude: longitude_deg * DEG,
         height: 0.0,
     };
-    let out = match valid_ms.then(|| sky_at_unix_ms(unix_ms as i64, &site)) {
+    let out = match valid.then(|| sky_at_unix_ms(unix_ms as i64, &site)) {
         Some(Ok(sky)) => [sky.sun.altitude, sky.sun.azimuth],
         _ => [f64::NAN; 2],
     };

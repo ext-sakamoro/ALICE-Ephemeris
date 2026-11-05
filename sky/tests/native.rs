@@ -50,6 +50,10 @@ fn what_is_not_a_time_or_a_place_is_nan() {
         [f64::NAN, 0.0, 0.0],
         [t, f64::NAN, 0.0],
         [t, 0.0, f64::INFINITY],
+        [t, 90.5, 0.0],
+        [t, -91.0, 0.0],
+        [t, 0.0, 180.5],
+        [t, 0.0, -181.0],
     ] {
         let [alt, az] = call(ms, lat, lon);
         assert!(alt.is_nan() && az.is_nan(), "{ms} {lat} {lon}");

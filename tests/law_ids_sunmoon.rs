@@ -318,7 +318,6 @@ fn bench_sky_digest() {
 /// `browser/` (scripts/run_browser_wasm.sh).
 pub(crate) fn bench_sky_digest_check() {
     let mut h = Hasher::new();
-    let mut n = 0u32;
     for i in 0..BENCH_SKY_COUNT {
         let (tt, ut1, site) = bench_sky_input(i);
         let s = horizon::sky(tt, ut1, 0.0, 0.0, &site);
@@ -330,8 +329,10 @@ pub(crate) fn bench_sky_digest_check() {
         ] {
             h.update(v.to_bits().to_le_bytes());
         }
-        n += 1;
     }
-    assert_eq!(n, BENCH_SKY_COUNT, "no evaluation compared");
+    // what the digest actually consumed: four f64 per evaluation (an empty or short loop
+    // would hash fewer bytes, and an empty hash has a digest too)
+    assert!(h.len() > 0, "nothing hashed");
+    assert_eq!(h.len(), u64::from(BENCH_SKY_COUNT) * 4 * 8, "evaluations hashed");
     assert_eq!(hex(&h.finalize()), BENCH_SKY_DIGEST);
 }

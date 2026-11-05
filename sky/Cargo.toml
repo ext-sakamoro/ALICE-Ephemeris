@@ -1,0 +1,27 @@
+[package]
+name = "alice-ephemeris-sky"
+version = "0.0.0"
+publish = false
+edition = "2021"
+rust-version = "1.85"
+license = "LicenseRef-Proprietary"
+description = "The Sun in a web page's sky: one export, sun_alt_az (horizon::sky_at_unix_ms), built for wasm32-unknown-unknown; the Law checks live in browser/"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+alice-ephemeris = { path = ".." }
+
+[dev-dependencies]
+sha2 = { version = "0.10", default-features = false }
+
+[workspace]
+members = ["."]
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "z"
+panic = "abort"

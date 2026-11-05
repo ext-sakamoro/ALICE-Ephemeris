@@ -92,7 +92,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: wasm-unknown
-          workspaces: browser
+          workspaces: |
+            browser
+            sky
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -104,6 +106,16 @@ jobs:
       # none ran, or the count differs from the #[test] functions
       - name: Law id checks under node (debug, then release)
         run: scripts/run_browser_wasm.sh
+      # sky/: the module a web page loads (sun_alt_az only); its native test pins the outputs,
+      # the runner checks the wasm build gives the same bits and exports nothing else
+      - name: rustfmt (sky/)
+        run: cargo fmt --manifest-path sky/Cargo.toml -- --check
+      - name: clippy (sky/, wasm32-unknown-unknown)
+        run: cargo clippy --locked --manifest-path sky/Cargo.toml --target wasm32-unknown-unknown -- -D warnings
+      - name: sky native test
+        run: cargo test --locked --release --manifest-path sky/Cargo.toml
+      - name: sky module under node
+        run: scripts/run_sky_wasm.sh
 
   clippy:
     name: Clippy and rustfmt

@@ -26,8 +26,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
   ⚠️ この digest と Law 識別子は alice-det-math の世代 (今は rev 6384856c、SEMANTICS_ID 85e08846…) の値で、
   det-math の世代を揃える変更 (Physics・SDF は rev 2d01c63f) の時にその変更と一緒に動く
 - `scripts/machete_metadata_check.py` (CI の unused-deps job と preflight): どの Cargo.toml にも
-  cargo-machete の ignore の指定 (table / dotted key / inline key) を置かない、見つけた時と
-  manifest が 0 件の時は red 使い道が machete に見えない依存は、見える形にする
+  cargo-machete の ignore の指定を置かない 各 manifest を TOML として読み (table / dotted key /
+  inline table / quoted key のどの書き方も同じ key になる)、`package.metadata` か
+  `workspace.metadata` に `cargo-machete` があれば red、読めない manifest と manifest 0 件も red
+  使い道が machete に見えない依存は、見える形にする
 - `bench_sky_digest` は loop の回数でなく hash した byte 数 (`Hasher::len`) を照合する
 - `Instant<S>` on the `Tai`, `Tt` and `Tdb` scales: `i64` seconds since
   J2000.0 plus attoseconds, checked integer arithmetic, `Duration`.

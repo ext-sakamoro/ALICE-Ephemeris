@@ -83,4 +83,3 @@ pub extern "C" fn bench_sky(n: u32) -> f64 {
     }
     acc
 }
-

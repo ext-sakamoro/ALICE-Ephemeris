@@ -481,6 +481,26 @@ step "ci.yml / browser: Law id checks under node (debug, then release)"
 ( export CARGO_TERM_COLOR="always"; scripts/run_browser_wasm.sh )
 )
 
+step "ci.yml / browser: rustfmt (sky/)"
+(
+  gh_step ci.yml.browser
+( export CARGO_TERM_COLOR="always"; cargo fmt --manifest-path sky/Cargo.toml -- --check )
+)
+
+step "ci.yml / browser: clippy (sky/, wasm32-unknown-unknown)"
+(
+  gh_step ci.yml.browser
+relint
+grep -q '^wasm32-unknown-unknown$' <<<"$(rustup target list --installed)" || rustup target add wasm32-unknown-unknown
+( export CARGO_TERM_COLOR="always"; cargo clippy --locked --manifest-path sky/Cargo.toml --target wasm32-unknown-unknown -- -D warnings )
+)
+
+step "ci.yml / browser: sky module under node"
+(
+  gh_step ci.yml.browser
+( export CARGO_TERM_COLOR="always"; scripts/run_sky_wasm.sh )
+)
+
 step "ci.yml / clippy: rustfmt"
 (
   gh_step ci.yml.clippy
@@ -644,6 +664,12 @@ step "ci.yml / test: Test (no default features)"
 (
   gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always"; cargo test --locked --no-default-features )
+)
+
+step "ci.yml / browser: sky native test"
+(
+  gh_step ci.yml.browser
+( export CARGO_TERM_COLOR="always"; cargo test --locked --release --manifest-path sky/Cargo.toml )
 )
 
 step "security-audit.yml / audit: cargo audit"

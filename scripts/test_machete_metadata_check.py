@@ -52,6 +52,24 @@ class MacheteMetadataCheck(unittest.TestCase):
         rc, out = run({"Cargo.toml": CLEAN + '\n[package]\nmetadata.cargo-machete.ignored = ["sha2"]\n'})
         self.assertEqual(rc, 1, out)
 
+    def test_inline_table_under_package_fails(self) -> None:
+        bad = '[package]\nname = "a"\nmetadata = { cargo-machete = { ignored = ["sha2"] } }\n'
+        rc, out = run({"Cargo.toml": bad})
+        self.assertEqual(rc, 1, out)
+
+    def test_quoted_key_fails(self) -> None:
+        rc, out = run({"Cargo.toml": CLEAN + '\n[package.metadata."cargo-machete"]\nignored = ["sha2"]\n'})
+        self.assertEqual(rc, 1, out)
+
+    def test_quoted_key_inline_fails(self) -> None:
+        bad = '[package]\nname = "a"\nmetadata."cargo-machete" = { ignored = ["sha2"] }\n'
+        rc, out = run({"Cargo.toml": bad})
+        self.assertEqual(rc, 1, out)
+
+    def test_a_manifest_that_does_not_parse_fails(self) -> None:
+        rc, out = run({"Cargo.toml": "[package\nname = \"a\"\n"})
+        self.assertEqual(rc, 1, out)
+
     def test_a_comment_naming_it_passes(self) -> None:
         rc, out = run({"Cargo.toml": CLEAN + "# cargo-machete reads only src/\n"})
         self.assertEqual(rc, 0, out)

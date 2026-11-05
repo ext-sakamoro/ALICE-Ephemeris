@@ -12,4 +12,6 @@ for d in "$root/a" "$root/deeper/path/b"; do
 done
 cmp "$root/a/sky.wasm" "$root/deeper/path/b/sky.wasm"
 python3 scripts/wasm_path_scan.py "$root/a/sky.wasm" "$root/deeper/path/b/sky.wasm"
-echo "sky module: the same bytes in 2 directories ($(wc -c < "$root/a/sky.wasm" | tr -d ' ') bytes)"
+# the sha256 lets two machines' logs be compared
+sum=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$root/a/sky.wasm")
+echo "sky module: the same bytes in 2 directories ($(wc -c < "$root/a/sky.wasm" | tr -d ' ') bytes, sha256 $sum)"

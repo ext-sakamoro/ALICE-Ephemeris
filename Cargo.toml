@@ -13,7 +13,7 @@ repository = "https://github.com/ext-sakamoro/ALICE-Ephemeris"
 readme = "README.md"
 keywords = ["astronomy", "time", "leap-seconds", "tdb", "deterministic"]
 categories = ["science", "date-and-time", "no-std"]
-exclude = ["/.github", "/scripts", "/deny.toml"]
+exclude = ["/.github", "/scripts", "/deny.toml", "/browser"]
 
 [dependencies]
 # every f64 transcendental goes through alice-det-math (bit-identical on all targets)
@@ -26,7 +26,8 @@ default = ["std"]
 std = ["alice-det-math/std"]
 
 [dev-dependencies]
-sha2 = { version = "0.10", default-features = false }
+# the Law identifier checks' hashing (browser/src/law_digest.rs), shared with the browser build
+alice-ephemeris-browser = { path = "browser" }
 sha1 = { version = "0.10", default-features = false }
 
 [lints.rust]

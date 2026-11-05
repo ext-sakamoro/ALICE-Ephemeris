@@ -28,7 +28,7 @@ use alice_ephemeris::{
     civil_from_mjd, ExpiryPolicy, Instant, Jd2, Tai, TdbModel, TimeError, Tt, UtcDateTime,
     ATTO_PER_SEC, TT_MINUS_TAI,
 };
-use sha2::{Digest, Sha256};
+use alice_ephemeris_browser::law_digest::{self, digest};
 
 /// SHA-256 and count of the frozen reference inputs.
 const REFERENCE_UTC_INPUTS: (&str, usize) = (
@@ -60,14 +60,6 @@ const TEST_TT_TAI: &str = "77918963f016300a054787c853bd3437878ae0b300f2ac3d5c9cd
 const TEST_TDB_SPICE_ET: &str = "21aeef5e1b5b8563606c49e3d1680105ce57139608721ae4a4e35b08a88ea6f6";
 const TEST_TDB_FB1990: &str = "131975032948ff7c5feef8126debcdc1628446a8a4e6c9a02cdc3a667a59436e";
 const TEST_JULIAN_DATE: &str = "bb7e7861ff821656bdd6a52fea9ddf067152f3e40b14348a6fe5044936bd5666";
-
-fn hex(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
-fn digest(bytes: &[u8]) -> String {
-    hex(&Sha256::digest(bytes))
-}
 
 // ---- grids -----------------------------------------------------------------
 
@@ -290,6 +282,12 @@ fn check(kind: &str, cases: &[Case]) {
 
 #[test]
 fn reference_grids_are_frozen() {
+    reference_grids_are_frozen_check();
+}
+
+/// The check behind `reference_grids_are_frozen`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn reference_grids_are_frozen_check() {
     let utc = reference_utc_inputs();
     let tt = reference_tt_inputs();
     let fb = reference_fb1990_inputs();
@@ -331,6 +329,12 @@ fn reference_grids_are_frozen() {
 
 #[test]
 fn reference_digests() {
+    reference_digests_check();
+}
+
+/// The check behind `reference_digests`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn reference_digests_check() {
     let utc = reference_utc_inputs();
     let tt = reference_tt_inputs();
     let fb = reference_fb1990_inputs();
@@ -360,6 +364,12 @@ fn reference_digests() {
 
 #[test]
 fn test_grid_digests() {
+    test_grid_digests_check();
+}
+
+/// The check behind `test_grid_digests`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn test_grid_digests_check() {
     let utc = test_utc_inputs();
     let tt = test_tt_inputs();
     assert!(utc.len() > 10_000 && tt.len() > 30_000);
@@ -386,16 +396,7 @@ fn test_grid_digests() {
 /// SHA-256 over a fixed prefix, the Law's name, its data, the reference grid's
 /// input pin and the reference output digest.
 fn law_id(law: &Law, data: &[u8], grid: (&str, usize), reference: &str) -> [u8; 32] {
-    let mut h = Sha256::new();
-    h.update(b"alice-ephemeris law v1\0");
-    h.update(law.name.as_bytes());
-    h.update([0]);
-    h.update((data.len() as u64).to_le_bytes());
-    h.update(data);
-    h.update(grid.0.as_bytes());
-    h.update((grid.1 as u64).to_le_bytes());
-    h.update(reference.as_bytes());
-    h.finalize().into()
+    law_digest::law_id(law.name, data, grid, reference)
 }
 
 fn f64s(v: &[f64]) -> Vec<u8> {
@@ -404,6 +405,12 @@ fn f64s(v: &[f64]) -> Vec<u8> {
 
 #[test]
 fn semantics_ids() {
+    semantics_ids_check();
+}
+
+/// The check behind `semantics_ids`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn semantics_ids_check() {
     let mut utc = Vec::new();
     for s in &SEGMENTS {
         for x in [s.start_mjd, s.delat_e7, s.ref_mjd, s.rate_e7] {

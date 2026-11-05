@@ -6,7 +6,8 @@ name: CI
 # The crate promises the same bits on every target, so the test matrix is the
 # product: tests/law_ids.rs pins SHA-256 digests of every conversion's outputs
 # and each lane (5 native platforms, debug and release, and wasm32) must
-# reproduce them.
+# reproduce them; the browser job runs the Law id checks on
+# wasm32-unknown-unknown, the target a web page loads.
 
 on:
   push:
@@ -73,6 +74,36 @@ jobs:
         run: |
           scripts/run_wasm_tests.sh
           scripts/run_wasm_tests.sh --release
+
+  browser:
+    name: Law ids on wasm32-unknown-unknown (browser target, via node)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - name: Ensure wasm32-unknown-unknown rust-std is installed
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm-unknown
+          workspaces: browser
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: rustfmt (browser/)
+        run: cargo fmt --manifest-path browser/Cargo.toml -- --check
+      - name: clippy (browser/, wasm32-unknown-unknown)
+        run: cargo clippy --locked --manifest-path browser/Cargo.toml --target wasm32-unknown-unknown -- -D warnings
+      # every check of tests/law_ids*.rs, debug then release; red if one traps,
+      # none ran, or the count differs from the #[test] functions
+      - name: Law id checks under node (debug, then release)
+        run: scripts/run_browser_wasm.sh
 
   clippy:
     name: Clippy and rustfmt

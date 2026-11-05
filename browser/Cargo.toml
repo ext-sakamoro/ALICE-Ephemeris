@@ -1,0 +1,26 @@
+[package]
+name = "alice-ephemeris-browser"
+version = "0.0.0"
+publish = false
+edition = "2021"
+rust-version = "1.85"
+license = "LicenseRef-Proprietary"
+description = "The Law identifier checks of tests/law_ids*.rs, built for wasm32-unknown-unknown (the browser target) and run under node by scripts/run_browser_wasm.sh"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+alice-ephemeris = { path = ".." }
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "6384856c8b00f1615e1cd6b5c74d88036c1a8706", version = "0.5.2", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+
+[workspace]
+members = ["."]
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+

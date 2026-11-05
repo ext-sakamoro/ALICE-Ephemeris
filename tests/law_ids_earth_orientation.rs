@@ -13,7 +13,7 @@ use alice_ephemeris::eop::{EopFlag, EopRow, EopTable};
 use alice_ephemeris::frames::{self, TemeToItrs};
 use alice_ephemeris::law::{self, Law, ERA_2000, IAU2006_CIO, TEME_ITRS, UT1_TAI};
 use alice_ephemeris::{ExpiryPolicy, Instant, Jd2, Tai, TimeError, ATTO_PER_SEC};
-use sha2::{Digest, Sha256};
+use alice_ephemeris_browser::law_digest::{self, digest};
 
 /// ERFA v2.0.1 sources of the IAU 2000A and s series (scripts/gen_iau2006_tables.py).
 const ERFA_SOURCES: &str = "9915ba38c9365f8b0738269b8c2ac1fdd5f8dee3 \
@@ -34,14 +34,6 @@ const REFERENCE_TEME_ITRS: &str =
     "922d9553dc8200eff46deead1a075a2ead42e05dff5c49e51014c56788173dd1";
 const REFERENCE_IAU2006_CIO: &str =
     "fe71c2f10c3823db3c22fa84413d8b7f44a2d6bae5ac81dc6bcebe93bff62975";
-
-fn hex(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
-fn digest(bytes: &[u8]) -> String {
-    hex(&Sha256::digest(bytes))
-}
 
 /// A synthetic table of 40 days across the 2016-12-31 leap second: smooth
 /// UT1 − UTC with the 1 s step, pole coordinates, dX dY on the first 30 rows,
@@ -237,20 +229,17 @@ fn cio_outputs(v: &[Jd2]) -> Vec<u8> {
 }
 
 fn law_id(law: &Law, data: &[u8], grid: (&str, usize), reference: &str) -> [u8; 32] {
-    let mut h = Sha256::new();
-    h.update(b"alice-ephemeris law v1\0");
-    h.update(law.name.as_bytes());
-    h.update([0]);
-    h.update((data.len() as u64).to_le_bytes());
-    h.update(data);
-    h.update(grid.0.as_bytes());
-    h.update((grid.1 as u64).to_le_bytes());
-    h.update(reference.as_bytes());
-    h.finalize().into()
+    law_digest::law_id(law.name, data, grid, reference)
 }
 
 #[test]
 fn reference_grids_are_frozen() {
+    reference_grids_are_frozen_check();
+}
+
+/// The check behind `reference_grids_are_frozen`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn reference_grids_are_frozen_check() {
     let rows = reference_eop_rows();
     let q = reference_eop_queries();
     let jd = reference_jd_inputs();
@@ -286,6 +275,12 @@ fn reference_grids_are_frozen() {
 
 #[test]
 fn reference_digests() {
+    reference_digests_check();
+}
+
+/// The check behind `reference_digests`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn reference_digests_check() {
     let rows = reference_eop_rows();
     let q = reference_eop_queries();
     let jd = reference_jd_inputs();
@@ -312,6 +307,12 @@ fn reference_digests() {
 
 #[test]
 fn semantics_ids() {
+    semantics_ids_check();
+}
+
+/// The check behind `semantics_ids`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn semantics_ids_check() {
     let mut ut1 = Vec::new();
     ut1.extend(4u64.to_le_bytes()); // rows in a Lagrange window
     ut1.extend(100_000_000_000u64.to_le_bytes()); // attoseconds per 1e-7 s

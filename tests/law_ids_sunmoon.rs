@@ -13,7 +13,7 @@ use alice_ephemeris::horizon::{self, Site, WGS84_A, WGS84_F};
 use alice_ephemeris::law::{self, Law, EARTH_EPV00, IAU2006_CIO, MOON_98, SUN_MOON_HORIZON};
 use alice_ephemeris::sunmoon::{epv00, moon98};
 use alice_ephemeris::Jd2;
-use sha2::{Digest, Sha256};
+use alice_ephemeris_browser::law_digest::{self, digest, hex, Hasher};
 
 /// ERFA v2.0.1 sources of the tables (scripts/gen_sunmoon_tables.py).
 const ERFA_EPV00: &str = "9915ba38c9365f8b0738269b8c2ac1fdd5f8dee3 \
@@ -34,14 +34,6 @@ const REFERENCE_SKY_INPUTS: (&str, usize) = (
 const REFERENCE_SUN_MOON_HORIZON: &str =
     "961a3bb0587372d7f901110c42d1bc1f1d5d3d255dddce4d447b24e9cea5c362";
 const REFERENCE_MOON_98: &str = "fd4dce2892c8cc69351256aaa3354ea433369ed74722f275051e2749a6700bd8";
-
-fn hex(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
-fn digest(bytes: &[u8]) -> String {
-    hex(&Sha256::digest(bytes))
-}
 
 /// TDB (TT) two-part dates 1800..2200 every 211 days plus a varying fraction,
 /// both orders of the parts on every 7th, and three dates out to 1000 and 3000.
@@ -171,20 +163,17 @@ fn sky_outputs(v: &[(Jd2, Jd2, f64, f64, Site)]) -> Vec<u8> {
 }
 
 fn law_id(law: &Law, data: &[u8], grid: (&str, usize), reference: &str) -> [u8; 32] {
-    let mut h = Sha256::new();
-    h.update(b"alice-ephemeris law v1\0");
-    h.update(law.name.as_bytes());
-    h.update([0]);
-    h.update((data.len() as u64).to_le_bytes());
-    h.update(data);
-    h.update(grid.0.as_bytes());
-    h.update((grid.1 as u64).to_le_bytes());
-    h.update(reference.as_bytes());
-    h.finalize().into()
+    law_digest::law_id(law.name, data, grid, reference)
 }
 
 #[test]
 fn reference_grid_is_frozen() {
+    reference_grid_is_frozen_check();
+}
+
+/// The check behind `reference_grid_is_frozen`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn reference_grid_is_frozen_check() {
     let jd = reference_jd_inputs();
     let got = (digest(&jd_input_bytes(&jd)), jd.len());
     assert!(got.1 > 600, "{}", got.1);
@@ -209,6 +198,12 @@ fn reference_grid_is_frozen() {
 
 #[test]
 fn reference_digests() {
+    reference_digests_check();
+}
+
+/// The check behind `reference_digests`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn reference_digests_check() {
     let jd = reference_jd_inputs();
     let cases = [
         ("EARTH_EPV00", earth_outputs(&jd), REFERENCE_EARTH_EPV00),
@@ -236,6 +231,12 @@ fn reference_digests() {
 
 #[test]
 fn semantics_ids() {
+    semantics_ids_check();
+}
+
+/// The check behind `semantics_ids`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn semantics_ids_check() {
     let mut earth = ERFA_EPV00.as_bytes().to_vec();
     earth.extend(alice_det_math::SEMANTICS_ID);
     let mut moon = ERFA_MOON98.as_bytes().to_vec();
@@ -275,4 +276,62 @@ fn semantics_ids() {
     for l in [EARTH_EPV00, MOON_98, SUN_MOON_HORIZON] {
         assert!(law::ALL.contains(&l), "{} is not in law::ALL", l.name);
     }
+}
+
+/// The sky over Tokyo (35° N, 140° E, height 0) every minute from 2026-11-05 09:30 UTC, the
+/// inputs of the browser lane's cost probe (`browser/`): `(tt, ut1)` for evaluation `i`
+/// (UT1 taken as UTC, TT = UTC + 69.184 s).
+pub(crate) fn bench_sky_input(i: u32) -> (Jd2, Jd2, Site) {
+    let site = Site {
+        latitude: 0.610_865_238_198_015_3,
+        longitude: 2.443_460_952_792_061,
+        height: 0.0,
+    };
+    let f = (34_200.0 + 60.0 * f64::from(i)) / 86_400.0;
+    let ut1 = Jd2 {
+        jd1: 2_461_349.5,
+        jd2: f,
+    };
+    let tt = Jd2 {
+        jd1: 2_461_349.5,
+        jd2: f + 69.184 / 86_400.0,
+    };
+    (tt, ut1, site)
+}
+
+/// Number of `bench_sky_input` evaluations the digest covers.
+pub(crate) const BENCH_SKY_COUNT: u32 = 2000;
+
+/// SHA-256 of the bits of the Sun's and Moon's altitude and azimuth at every
+/// `bench_sky_input`. A change detector shared by the native run and the browser build (both
+/// run this check against the same value), so the browser build is held to the same bits;
+/// the values themselves are checked against ERFA in tests/oracle_sunmoon.rs and
+/// tests/oracle_horizon.rs.
+const BENCH_SKY_DIGEST: &str = "1ca98d3b05233f202ab8073a33de129309e253b4a299e29809106749043e9428";
+
+#[test]
+fn bench_sky_digest() {
+    bench_sky_digest_check();
+}
+
+/// The check behind `bench_sky_digest`, also run on wasm32-unknown-unknown by
+/// `browser/` (scripts/run_browser_wasm.sh).
+pub(crate) fn bench_sky_digest_check() {
+    let mut h = Hasher::new();
+    let mut n = 0u32;
+    for i in 0..BENCH_SKY_COUNT {
+        let (tt, ut1, site) = bench_sky_input(i);
+        let s = horizon::sky(tt, ut1, 0.0, 0.0, &site);
+        for v in [
+            s.sun.altitude,
+            s.sun.azimuth,
+            s.moon.altitude,
+            s.moon.azimuth,
+        ] {
+            h.update(v.to_bits().to_le_bytes());
+        }
+        n += 1;
+    }
+    assert_eq!(n, BENCH_SKY_COUNT, "no evaluation compared");
+    assert_eq!(hex(&h.finalize()), BENCH_SKY_DIGEST);
 }

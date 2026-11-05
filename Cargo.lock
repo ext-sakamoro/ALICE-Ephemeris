@@ -12,7 +12,16 @@ name = "alice-ephemeris"
 version = "0.1.0"
 dependencies = [
  "alice-det-math",
+ "alice-ephemeris-browser",
  "sha1",
+]
+
+[[package]]
+name = "alice-ephemeris-browser"
+version = "0.0.0"
+dependencies = [
+ "alice-det-math",
+ "alice-ephemeris",
  "sha2",
 ]
 

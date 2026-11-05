@@ -14,6 +14,17 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- CI の `browser` job: `tests/law_ids*.rs` の Law 識別子の検査と bench の太陽と月の出力の digest (11 本) を
+  wasm32-unknown-unknown (web page が読む target) で build し node で実行する
+  (`browser/`、`scripts/run_browser_wasm.sh`) 1 本でも trap する / 0 本 / 本数が
+  `#[test]` の数と違う時は red `horizon::sky` の 1 回の時間・build の大きさ・使った
+  alice-det-math の `SEMANTICS_ID` を出す (報告のみ) 検査の本体は test file の `*_check` 関数で、`#[test]` はそれを呼ぶ
+- 3 つの test file (`tests/law_ids*.rs`) の SHA-256 の helper (`hex` / `digest` / `law_id`) を `browser/src/law_digest.rs`
+  の 1 か所にした (これまで 3 file に同じ写し) native の試験は dev-dependency の `alice-ephemeris-browser`
+  から、browser の build は自分の crate から同じ code を使う 太陽と月の bench の入力の出力の digest
+  (`bench_sky_digest`、2000 点) を native と browser の両方で同じ値に照合する
+  ⚠️ この digest と Law 識別子は alice-det-math の世代 (今は rev 6384856c、SEMANTICS_ID 85e08846…) の値で、
+  det-math の世代を揃える変更 (Physics・SDF は rev 2d01c63f) の時にその変更と一緒に動く
 - `Instant<S>` on the `Tai`, `Tt` and `Tdb` scales: `i64` seconds since
   J2000.0 plus attoseconds, checked integer arithmetic, `Duration`.
 - UTC ↔ TAI (`UtcDateTime::to_tai`, `UtcDateTime::from_tai`,

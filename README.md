@@ -87,7 +87,8 @@ basic operations only); `clippy.toml` forbids the platform `f64::sin` and
 friends, `mul_add`, the wall clock, threads and hash-ordered collections.
 `tests/law_ids.rs` hashes the outputs of every conversion over fixed grids;
 CI asserts the same hashes on Linux (x86_64, aarch64), macOS (aarch64,
-x86_64), Windows and wasm32-wasip1.
+x86_64), Windows and wasm32-wasip1, and runs the same Law identifier checks
+in a build for wasm32-unknown-unknown, the target a web page loads.
 
 ## MSRV
 

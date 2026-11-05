@@ -92,9 +92,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: wasm-unknown
-          workspaces: |
-            browser
-            sky
+          workspaces: .
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -116,6 +114,11 @@ jobs:
         run: cargo test --locked --release --manifest-path sky/Cargo.toml
       - name: sky module under node
         run: scripts/run_sky_wasm.sh
+      # a page's module carries no build path and does not depend on the build directory
+      - name: wasm path scan tests
+        run: python3 scripts/test_wasm_path_scan.py
+      - name: sky module is the same built in 2 directories
+        run: scripts/sky_wasm_repro.sh
 
   clippy:
     name: Clippy and rustfmt

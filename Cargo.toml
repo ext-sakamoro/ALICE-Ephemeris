@@ -34,3 +34,24 @@ sha1 = { version = "0.10", default-features = false }
 unsafe_code = "forbid"
 missing_docs = "warn"
 
+# one workspace: a package outside the workspace root gets Cargo metadata from its absolute path,
+# and that path then reaches the code of a wasm built from it (the same source gave different bytes
+# in two directories); inside it, the path is relative
+[workspace]
+members = [".", "browser", "sky"]
+default-members = ["."]
+exclude = ["fuzz"]
+
+# browser/: the Law checks for wasm32-unknown-unknown
+[profile.browser]
+inherits = "release"
+lto = true
+codegen-units = 1
+
+# sky/: the module a web page loads
+[profile.sky]
+inherits = "release"
+lto = true
+codegen-units = 1
+opt-level = "z"
+panic = "abort"

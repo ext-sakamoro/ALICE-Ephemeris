@@ -38,7 +38,7 @@ const equinox = Date.UTC(2026, 2, 20, 14, 46);
 const subsolar = -(15 * (14 + 46 / 60) - 180 - 7.5 / 4);
 const [up] = sun(equinox, 0, subsolar);
 const [down] = sun(equinox, 0, subsolar + 180);
-const nan = [sun(equinox + 0.5, 0, 0), sun(Date.UTC(1900, 0, 1), 0, 0), sun(NaN, 0, 0), sun(equinox, NaN, 0)];
+const nan = [sun(equinox + 0.5, 0, 0), sun(Date.UTC(1900, 0, 1), 0, 0), sun(NaN, 0, 0), sun(equinox, NaN, 0), sun(equinox, 91, 0), sun(equinox, 0, 181)];
 const okSun = up * deg > 89 && down * deg < -89 && nan.every(([a, z]) => Number.isNaN(a) && Number.isNaN(z));
 if (!okSun) problems.push(`equinox ${up * deg}°/${down * deg}° or a NaN case`);
 console.log(`${okSun ? 'ok  ' : 'FAIL'} sun_alt_az: subsolar ${(up * deg).toFixed(3)}°, antipode ${(down * deg).toFixed(3)}°`);

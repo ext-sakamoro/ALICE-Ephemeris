@@ -98,30 +98,7 @@ pub const DET_MATH_PINS: &[(&str, [u8; 32])] = &[
     ),
 ];
 
-const fn same_bytes(a: &[u8; 32], b: &[u8; 32]) -> bool {
-    let mut i = 0;
-    while i < 32 {
-        if a[i] != b[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
-const _: () = {
-    let mut i = 0;
-    while i < DET_MATH_PINS.len() {
-        assert!(
-            same_bytes(
-                &DET_MATH_PINS[i].1,
-                &alice_det_math::function_pin(DET_MATH_PINS[i].0)
-            ),
-            "a function this crate calls moved in alice-det-math: re-record DET_MATH_PINS and the Law identifiers",
-        );
-        i += 1;
-    }
-};
+const _: () = alice_det_math::assert_function_pins(DET_MATH_PINS);
 
 /// A Law: a name and a 32-byte semantics identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

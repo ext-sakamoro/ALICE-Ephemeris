@@ -249,7 +249,9 @@ fn proper_motion_in_right_ascension_is_measured_along_the_sky() {
     assert!((d / ARCSEC - 1000.0).abs() < 1.0, "{}", d / ARCSEC);
 }
 
-// Sirius, Canopus, Arcturus, Vega, Polaris: J2000 degrees and magnitude as usually published
+// Sirius, Canopus, Arcturus, Vega, Polaris: J2000 degrees and magnitude written from memory of the usual
+// published values, not read from a source. It catches a misread column or a star missing from the
+// table; the real checks are the table itself and the place against ERFA.
 const NAMED: [(&str, f64, f64, f32); 5] = [
     ("Sirius", 101.2872, -16.7161, -1.46),
     ("Canopus", 95.9880, -52.6957, -0.72),

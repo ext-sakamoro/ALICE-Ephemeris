@@ -1,4 +1,4 @@
-# sky/expected.txt: the inputs of sun_alt_az (unix ms, latitude deg, longitude deg) and the
+# sky/expected.txt: the inputs of sun_alt_az and moon_alt_az_lit (unix ms, latitude deg, longitude deg) and the
 # sha256 of its outputs (altitude then azimuth, f64 little endian, in order); the native test
 # (sky/tests/native.rs) and the wasm runner (scripts/run_sky_wasm.mjs) both check it
 63072000000 0 0
@@ -26,3 +26,4 @@
 3830232493602 40.7 -74.0
 4001467061493 -1.29 36.82
 sha256 47515d6c44e416c0ae97dd1f3bca6f89edd6d3a9cac9a3bfd7eafa86e739dc9a
+moon-sha256 e8b30893f8b3a2a1909a8206de7ec58ccc550c49c06a5297dba720404acd70f1

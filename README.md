@@ -101,7 +101,8 @@ Each conversion is a Law with a 32-byte semantics identifier (`law::ALL`):
 `ut1-tai-eop`, `era-2000`, `teme-itrs-gmst82`, `iau2006-2000a-cio`,
 `earth-epv00`, `moon98`, `sun-moon-horizon`. The
 identifier is the SHA-256 of the Law's name, tables and constants (as bit
-patterns), the `alice-det-math` semantics identifier where it is used, and
+patterns), the identifier of each `alice-det-math` function this crate calls
+(`law::DET_MATH_PINS`) where it is used, and
 the digest of its outputs over a frozen reference grid. It moves if and only
 if those inputs or the reference outputs move; growing the regression tests
 does not move it.

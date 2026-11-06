@@ -2,7 +2,7 @@
 //! interpolation, Earth rotation angle, TEME → ITRS, IAU 2006/2000A CIO).
 //!
 //! Same rule as tests/law_ids.rs: an identifier is the SHA-256 of the Law's
-//! name, its data, the alice-det-math `SEMANTICS_ID` where it evaluates `f64`
+//! name, its data, the identifier of each alice-det-math function where it evaluates `f64`
 //! transcendentals, and the digest of its outputs over a frozen reference grid
 //! whose inputs are pinned by their own SHA-256 and count. The identifiers are
 //! in src/law.rs (`law::ALL`).
@@ -13,7 +13,7 @@ use alice_ephemeris::eop::{EopFlag, EopRow, EopTable};
 use alice_ephemeris::frames::{self, TemeToItrs};
 use alice_ephemeris::law::{self, Law, ERA_2000, IAU2006_CIO, TEME_ITRS, UT1_TAI};
 use alice_ephemeris::{ExpiryPolicy, Instant, Jd2, Tai, TimeError, ATTO_PER_SEC};
-use alice_ephemeris_browser::law_digest::{self, digest};
+use alice_ephemeris_browser::law_digest::{self, det_math_data, digest};
 
 /// ERFA v2.0.1 sources of the IAU 2000A and s series (scripts/gen_iau2006_tables.py).
 const ERFA_SOURCES: &str = "9915ba38c9365f8b0738269b8c2ac1fdd5f8dee3 \
@@ -310,6 +310,10 @@ fn semantics_ids() {
     semantics_ids_check();
 }
 
+fn det_math() -> Vec<u8> {
+    det_math_data(alice_ephemeris::law::DET_MATH_PINS)
+}
+
 /// The check behind `semantics_ids`, also run on wasm32-unknown-unknown by
 /// `browser/` (scripts/run_browser_wasm.sh).
 pub(crate) fn semantics_ids_check() {
@@ -317,9 +321,9 @@ pub(crate) fn semantics_ids_check() {
     ut1.extend(4u64.to_le_bytes()); // rows in a Lagrange window
     ut1.extend(100_000_000_000u64.to_le_bytes()); // attoseconds per 1e-7 s
     let mut teme = frames::EARTH_ROTATION_RATE.to_bits().to_le_bytes().to_vec();
-    teme.extend(alice_det_math::SEMANTICS_ID);
+    teme.extend(det_math());
     let mut cio = ERFA_SOURCES.as_bytes().to_vec();
-    cio.extend(alice_det_math::SEMANTICS_ID);
+    cio.extend(det_math());
     let cases = [
         (UT1_TAI, ut1, REFERENCE_EOP_INPUTS, REFERENCE_UT1_TAI),
         (

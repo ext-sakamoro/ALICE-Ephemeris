@@ -13,7 +13,7 @@ use alice_ephemeris::horizon::{self, Site, WGS84_A, WGS84_F};
 use alice_ephemeris::law::{self, Law, EARTH_EPV00, IAU2006_CIO, MOON_98, SUN_MOON_HORIZON};
 use alice_ephemeris::sunmoon::{epv00, moon98};
 use alice_ephemeris::Jd2;
-use alice_ephemeris_browser::law_digest::{self, digest, hex, Hasher};
+use alice_ephemeris_browser::law_digest::{self, det_math_data, digest, hex, Hasher};
 
 /// ERFA v2.0.1 sources of the tables (scripts/gen_sunmoon_tables.py).
 const ERFA_EPV00: &str = "9915ba38c9365f8b0738269b8c2ac1fdd5f8dee3 \
@@ -234,13 +234,17 @@ fn semantics_ids() {
     semantics_ids_check();
 }
 
+fn det_math() -> Vec<u8> {
+    det_math_data(alice_ephemeris::law::DET_MATH_PINS)
+}
+
 /// The check behind `semantics_ids`, also run on wasm32-unknown-unknown by
 /// `browser/` (scripts/run_browser_wasm.sh).
 pub(crate) fn semantics_ids_check() {
     let mut earth = ERFA_EPV00.as_bytes().to_vec();
-    earth.extend(alice_det_math::SEMANTICS_ID);
+    earth.extend(det_math());
     let mut moon = ERFA_MOON98.as_bytes().to_vec();
-    moon.extend(alice_det_math::SEMANTICS_ID);
+    moon.extend(det_math());
     // the Laws it builds on, and the ellipsoid
     let mut sky = Vec::new();
     for l in [EARTH_EPV00, MOON_98, IAU2006_CIO] {
@@ -248,7 +252,7 @@ pub(crate) fn semantics_ids_check() {
     }
     sky.extend(WGS84_A.to_bits().to_le_bytes());
     sky.extend(WGS84_F.to_bits().to_le_bytes());
-    sky.extend(alice_det_math::SEMANTICS_ID);
+    sky.extend(det_math());
     let cases = [
         (
             EARTH_EPV00,

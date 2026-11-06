@@ -17,7 +17,7 @@ exclude = ["/.github", "/scripts", "/deny.toml", "/browser"]
 
 [dependencies]
 # every f64 transcendental goes through alice-det-math (bit-identical on all targets)
-alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "6384856c8b00f1615e1cd6b5c74d88036c1a8706", version = "0.5.2", default-features = false }
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", branch = "main", version = "0.6", default-features = false }
 
 [features]
 default = ["std"]

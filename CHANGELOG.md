@@ -6,6 +6,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Law 識別子 8 本 (`tdb-spice-et` / `tdb-fb1990` / `julian-date` / `teme-itrs-gmst82` / `iau2006-2000a-cio` / `earth-epv00` / `moon98` / `sun-moon-horizon`) は `alice-det-math` 全体の識別子でなく、この crate が呼ぶ 8 関数の識別子 (`law::DET_MATH_FUNCTIONS` / `DET_MATH_PINS`) を畳む 基準の格子の出力の digest は全部不変 前の値は `law::PREVIOUS_SEMANTICS_IDS` に残し、`law::names_law` が両方を読む 呼ばない関数が動いても識別子は動かず、呼ぶ関数が動けば compile が止まる `alice-det-math` は rev から `branch = "main"` + version 0.6 に
+
 ### Added
 
 - `star_table`: Bright Star Catalog の等級 6.0 までの 5080 星 (`BRIGHTEST`、`STAR_COUNT`) と `stars`: 地平座標への変換

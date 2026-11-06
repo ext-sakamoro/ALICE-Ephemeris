@@ -18,6 +18,19 @@ pub fn digest(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
 
+/// The bytes a Law's data takes for the `alice-det-math` functions it computes with: for each entry of
+/// `pins`, the name length (`u32` big-endian), the name and the digest.
+#[must_use]
+pub fn det_math_data(pins: &[(&str, [u8; 32])]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (name, digest) in pins {
+        out.extend((name.len() as u32).to_be_bytes());
+        out.extend(name.as_bytes());
+        out.extend(digest);
+    }
+    out
+}
+
 /// SHA-256 over a fixed prefix, the Law's name, its data, the reference grid's input pin and
 /// the reference output digest (the rule every Law identifier in `law::ALL` follows).
 #[must_use]

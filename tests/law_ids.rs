@@ -1,7 +1,7 @@
 //! The Laws' semantics identifiers (src/law.rs) and the output pins.
 //!
 //! Each Law's identifier is the SHA-256 of its name, its data (tables and
-//! constants as bit patterns), the alice-det-math `SEMANTICS_ID` where it
+//! constants as bit patterns), the identifier of each alice-det-math function where it
 //! evaluates `f64` transcendentals, and the digest of its outputs over a
 //! **frozen reference grid**. The rule: the identifier moves if and only if
 //! the Law's inputs or its outputs on the reference grid move.
@@ -28,7 +28,7 @@ use alice_ephemeris::{
     civil_from_mjd, ExpiryPolicy, Instant, Jd2, Tai, TdbModel, TimeError, Tt, UtcDateTime,
     ATTO_PER_SEC, TT_MINUS_TAI,
 };
-use alice_ephemeris_browser::law_digest::{self, digest};
+use alice_ephemeris_browser::law_digest::{self, det_math_data, digest};
 
 /// SHA-256 and count of the frozen reference inputs.
 const REFERENCE_UTC_INPUTS: (&str, usize) = (
@@ -404,8 +404,47 @@ fn f64s(v: &[f64]) -> Vec<u8> {
 }
 
 #[test]
+fn every_det_math_entry_is_the_resolved_function() {
+    assert!(!law::DET_MATH_PINS.is_empty());
+    assert_eq!(law::DET_MATH_FUNCTIONS.len(), law::DET_MATH_PINS.len());
+    for (want, (name, digest)) in law::DET_MATH_FUNCTIONS.iter().zip(law::DET_MATH_PINS) {
+        assert_eq!(want, name);
+        assert_eq!(*digest, alice_det_math::function_pin(name), "{name}");
+    }
+}
+
+#[test]
+fn the_earlier_identifiers_name_their_laws_and_only_those() {
+    assert_eq!(law::PREVIOUS_SEMANTICS_IDS.len(), 8);
+    for (name, id) in law::PREVIOUS_SEMANTICS_IDS {
+        let l = law::ALL
+            .iter()
+            .find(|l| l.name == *name)
+            .unwrap_or_else(|| panic!("{name} is not in law::ALL"));
+        assert_ne!(l.semantics_id, *id, "{name}: an earlier id is not this one");
+        assert!(
+            law::names_law(l, id),
+            "{name}: the earlier id does not read"
+        );
+        assert!(law::names_law(l, &l.semantics_id));
+        for other in law::ALL.iter().filter(|o| o.name != *name) {
+            assert!(
+                !law::names_law(other, id),
+                "{name}'s id read as {}",
+                other.name
+            );
+        }
+    }
+    assert!(!law::names_law(&law::UTC_TAI, &[0x11; 32]));
+}
+
+#[test]
 fn semantics_ids() {
     semantics_ids_check();
+}
+
+fn det_math() -> Vec<u8> {
+    det_math_data(alice_ephemeris::law::DET_MATH_PINS)
 }
 
 /// The check behind `semantics_ids`, also run on wasm32-unknown-unknown by
@@ -429,7 +468,7 @@ pub(crate) fn semantics_ids_check() {
     let tt = TT_MINUS_TAI.total_attoseconds().to_le_bytes().to_vec();
 
     let mut spice = f64s(&[SPICE_K, SPICE_EB, SPICE_M[0], SPICE_M[1]]);
-    spice.extend(alice_det_math::SEMANTICS_ID);
+    spice.extend(det_math());
 
     let mut fb: Vec<u8> = fb1990_coefficients().iter().flat_map(|t| f64s(t)).collect();
     for b in FB1990_BLOCKS {
@@ -439,9 +478,9 @@ pub(crate) fn semantics_ids_check() {
     fb.extend(FB1990_STATED_RANGE.0.to_le_bytes());
     fb.extend(FB1990_STATED_RANGE.1.to_le_bytes());
     fb.extend(FB1990_DOMAIN_MILLENNIA.to_bits().to_le_bytes());
-    fb.extend(alice_det_math::SEMANTICS_ID);
+    fb.extend(det_math());
 
-    let jd = alice_det_math::SEMANTICS_ID.to_vec();
+    let jd = det_math();
 
     let cases = [
         (law::UTC_TAI, utc, REFERENCE_UTC_INPUTS, REFERENCE_UTC_TAI),

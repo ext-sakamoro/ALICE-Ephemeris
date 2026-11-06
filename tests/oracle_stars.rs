@@ -212,3 +212,38 @@ fn proper_motion_moves_it_by_what_it_says() {
     .acos();
     assert!((d / ARCSEC - 1000.0).abs() < 1.0, "{}", d / ARCSEC);
 }
+
+#[test]
+fn proper_motion_in_right_ascension_is_measured_along_the_sky() {
+    // 100″ a year along the sky at declination 60°, for 10 years: 1000″ whatever the declination
+    let (tt, ut1) = j2000();
+    let later = Jd2 {
+        jd1: tt.jd1,
+        jd2: 3652.5,
+    };
+    let at = site(36.0, 140.0);
+    let still = [Star {
+        ra: 1.0,
+        dec: 60.0 * DEG,
+        pm_ra: 0.0,
+        pm_dec: 0.0,
+        mag: 0.0,
+    }];
+    let moving = [Star {
+        pm_ra: 100.0 * ARCSEC,
+        ..still[0]
+    }];
+    let (a, b) = (
+        stars_in_sky(&still, later, ut1, 0.0, 0.0, &at)
+            .next()
+            .unwrap(),
+        stars_in_sky(&moving, later, ut1, 0.0, 0.0, &at)
+            .next()
+            .unwrap(),
+    );
+    let d = (a.altitude.sin() * b.altitude.sin()
+        + a.altitude.cos() * b.altitude.cos() * (a.azimuth - b.azimuth).cos())
+    .clamp(-1.0, 1.0)
+    .acos();
+    assert!((d / ARCSEC - 1000.0).abs() < 1.0, "{}", d / ARCSEC);
+}

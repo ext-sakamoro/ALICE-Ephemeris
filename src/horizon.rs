@@ -182,6 +182,16 @@ pub(crate) fn horizontal(
 ///
 /// [`ExpiryPolicy::AssumeNoNewLeapSeconds`]: crate::ExpiryPolicy::AssumeNoNewLeapSeconds
 pub fn sky_at_unix_ms(unix_ms: i64, site: &Site) -> Result<Sky, crate::TimeError> {
+    let (tt, ut1) = tt_ut1_at_unix_ms(unix_ms)?;
+    Ok(sky(tt, ut1, 0.0, 0.0, site))
+}
+
+/// TT and UT1 for a UTC time given as Unix milliseconds, as [`sky_at_unix_ms`] takes them
+///
+/// # Errors
+///
+/// As [`sky_at_unix_ms`]
+pub fn tt_ut1_at_unix_ms(unix_ms: i64) -> Result<(Jd2, Jd2), crate::TimeError> {
     const MS_PER_DAY: i64 = 86_400_000;
     // 1970-01-01 is MJD 40587
     let day = unix_ms.div_euclid(MS_PER_DAY);
@@ -210,7 +220,7 @@ pub fn sky_at_unix_ms(unix_ms: i64, site: &Site) -> Result<Sky, crate::TimeError
         jd1: 2_400_000.5 + mjd as f64,
         jd2: ms as f64 / 86_400_000.0,
     };
-    Ok(sky(tt, ut1, 0.0, 0.0, site))
+    Ok((tt, ut1))
 }
 
 /// A calendar or clock field (always < 256 here) as `u8`

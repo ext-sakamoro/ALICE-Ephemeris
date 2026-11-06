@@ -4,6 +4,7 @@
 //! Author: Moroya Sakamoto
 
 use alice_ephemeris::horizon::Site;
+use alice_ephemeris::star_table::BRIGHTEST;
 use alice_ephemeris::stars::{stars_in_sky, Star};
 use alice_ephemeris::Jd2;
 
@@ -72,7 +73,7 @@ fn the_directions_agree_with_erfa() {
             above += 1;
         }
     }
-    assert_eq!(compared, 60);
+    assert_eq!(compared, 160);
     assert!(
         below > 5 && above > 5,
         "only one side of the horizon: {below} {above}"
@@ -246,4 +247,87 @@ fn proper_motion_in_right_ascension_is_measured_along_the_sky() {
     .clamp(-1.0, 1.0)
     .acos();
     assert!((d / ARCSEC - 1000.0).abs() < 1.0, "{}", d / ARCSEC);
+}
+
+// Sirius, Canopus, Arcturus, Vega, Polaris: J2000 degrees and magnitude as usually published
+const NAMED: [(&str, f64, f64, f32); 5] = [
+    ("Sirius", 101.2872, -16.7161, -1.46),
+    ("Canopus", 95.9880, -52.6957, -0.72),
+    ("Arcturus", 213.9153, 19.1824, -0.04),
+    ("Vega", 279.2347, 38.7837, 0.03),
+    ("Polaris", 37.9546, 89.2641, 2.02),
+];
+
+#[test]
+fn the_table_holds_the_named_stars_where_they_are_published() {
+    let mut found = 0;
+    for (name, ra, dec, mag) in NAMED {
+        let s = BRIGHTEST
+            .iter()
+            .find(|s| {
+                let c = (s.dec / DEG - dec).abs() < 0.05;
+                let a = ((s.ra / DEG - ra) * (dec * DEG).cos()).abs() < 0.05;
+                c && a
+            })
+            .unwrap_or_else(|| panic!("{name} is not in the table"));
+        assert!((s.mag - mag).abs() < 0.1, "{name}: {}", s.mag);
+        found += 1;
+    }
+    assert_eq!(found, NAMED.len());
+}
+
+#[test]
+fn the_table_is_three_hundred_stars_in_order_with_sane_values() {
+    assert_eq!(BRIGHTEST.len(), 300);
+    assert!(BRIGHTEST.windows(2).all(|w| w[0].mag <= w[1].mag));
+    assert_eq!(BRIGHTEST[0].mag, -1.46);
+    assert!(BRIGHTEST[299].mag < 3.7, "{}", BRIGHTEST[299].mag);
+    for s in &BRIGHTEST {
+        assert!((0.0..core::f64::consts::TAU).contains(&s.ra));
+        assert!(s.dec.abs() <= 90.0 * DEG);
+        assert!(s.pm_ra.abs() < 20.0 * ARCSEC && s.pm_dec.abs() < 20.0 * ARCSEC);
+    }
+    // the objects with HR numbers that are not stars are not here: 47 Tuc and M 31 at their places
+    for (ra, dec) in [
+        (6.02417, -72.08),
+        (10.67375, 41.27),
+        (138.01167, -64.86),
+        (132.82917, 11.81),
+    ] {
+        assert!(
+            !BRIGHTEST
+                .iter()
+                .any(|s| (s.ra / DEG - ra).abs() < 0.02 && (s.dec / DEG - dec).abs() < 0.02),
+            "{ra} {dec}"
+        );
+    }
+}
+
+#[test]
+fn a_named_star_stands_where_erfa_puts_it_by_the_table_s_own_values() {
+    // Sirius from the table, through this crate, and the published row of the ERFA file
+    let row = include_str!("data/star-fixture.csv")
+        .lines()
+        .find(|l| l.starts_with("101.2872,-16.7161,") && l.contains(",36.0,140.0,"))
+        .expect("a Sirius row at the site");
+    let v: Vec<f64> = row.split(',').map(|x| x.parse().unwrap()).collect();
+    let (ut1, tt) = (
+        Jd2 {
+            jd1: v[6],
+            jd2: v[7],
+        },
+        Jd2 {
+            jd1: v[8],
+            jd2: v[9],
+        },
+    );
+    let at = site(36.0, 140.0);
+    let h = stars_in_sky(&BRIGHTEST[..1], tt, ut1, 0.0, 0.0, &at)
+        .next()
+        .unwrap();
+    let (a, b) = (v[11], h.altitude);
+    let d = (a.sin() * b.sin() + a.cos() * b.cos() * (v[10] - h.azimuth).cos())
+        .clamp(-1.0, 1.0)
+        .acos();
+    assert!(d < 40.0 * ARCSEC, "{} arcsec", d / ARCSEC);
 }

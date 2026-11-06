@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Write tests/data/star-fixture.csv: written directions (not catalogue stars) through ERFA's
-eraAtco13, airless, for tests/oracle_stars.rs. Needs pyerfa (scripts/oracle-requirements.txt).
+"""Write tests/data/star-fixture.csv: written directions and five named stars of the table
+(their J2000 values as published, not from the table) through ERFA's eraAtco13, airless, for
+tests/oracle_stars.rs. Needs pyerfa (scripts/oracle-requirements.txt).
 
     python3 scripts/gen_star_golden.py
 
@@ -14,7 +15,10 @@ import erfa
 
 ARCSEC = math.pi / 180 / 3600
 # ra deg, dec deg, pm ra·cos dec arcsec/yr, pm dec arcsec/yr
+# and Sirius, Canopus, Arcturus, Vega, Polaris at their published J2000 positions and proper motions
 STARS = [(100.0, -20.0, -0.5, -1.0), (40.0, 85.0, 0.04, -0.01), (280.0, 40.0, 0.2, 0.3)]
+NAMED = [(101.2872, -16.7161, -0.546, -1.223), (95.9880, -52.6957, 0.020, 0.024), (213.9153, 19.1824, -1.093, -2.000), (279.2347, 38.7837, 0.201, 0.287), (37.9546, 89.2641, 0.044, -0.012)]
+STARS = STARS + NAMED
 # latitude, longitude degrees
 SITES = [(36.0, 140.0), (-33.9, 151.2), (51.5, -0.1), (0.0, 0.0)]
 # UTC, in years with 37 leap seconds

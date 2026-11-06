@@ -14,7 +14,7 @@ const ex = instance.exports;
 const problems = [];
 
 const names = Object.keys(ex).sort();
-if (names.join(',') !== 'memory,moon_alt_az_lit,sun_alt_az') problems.push(`exports: ${names.join(', ')}`);
+if (names.join(',') !== 'memory,moon_alt_az_lit,stars_alt_az_mag,stars_len,sun_alt_az') problems.push(`exports: ${names.join(', ')}`);
 
 const sun = (ms, lat, lon) => Array.from(new Float64Array(ex.memory.buffer, ex.sun_alt_az(ms, lat, lon), 2));
 
@@ -25,19 +25,26 @@ let moonPinned = null;
 let n = 0;
 const h = crypto.createHash('sha256');
 const hm = crypto.createHash('sha256');
+const hs = crypto.createHash('sha256');
+const stars = (ms, lat, lon) => Array.from(new Float64Array(ex.memory.buffer, ex.stars_alt_az_mag(ms, lat, lon), ex.stars_len() * 3));
+let starsPinned = null;
 for (const line of fs.readFileSync(expectedPath, 'utf8').split('\n')) {
   if (line.startsWith('#') || line.trim() === '') continue;
   if (line.startsWith('sha256 ')) { pinned = line.slice(7).trim(); continue; }
   if (line.startsWith('moon-sha256 ')) { moonPinned = line.slice(12).trim(); continue; }
+  if (line.startsWith('stars-sha256 ')) { starsPinned = line.slice(13).trim(); continue; }
   const [ms, lat, lon] = line.trim().split(/\s+/).map(Number);
   const out = new Float64Array(sun(ms, lat, lon));
   h.update(Buffer.from(out.buffer));
   hm.update(Buffer.from(new Float64Array(moon(ms, lat, lon)).buffer));
+  hs.update(Buffer.from(new Float64Array(stars(ms, lat, lon)).buffer));
   n += 1;
 }
 const got = h.digest('hex');
 if (n === 0) problems.push('no inputs compared');
 if (got !== pinned) problems.push(`outputs ${got} != pinned ${pinned}`);
+const gotStars = hs.digest('hex');
+if (gotStars !== starsPinned) problems.push(`stars outputs ${gotStars} != pinned ${starsPinned}`);
 const gotMoon = hm.digest('hex');
 if (gotMoon !== moonPinned) problems.push(`moon outputs ${gotMoon} != pinned ${moonPinned}`);
 console.log(`${got === pinned && gotMoon === moonPinned && n > 0 ? 'ok  ' : 'FAIL'} native bits over ${n} inputs, Sun and Moon`);

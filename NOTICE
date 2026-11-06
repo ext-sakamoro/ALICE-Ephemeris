@@ -1,0 +1,12 @@
+Star positions, proper motions and magnitudes in src/star_table.rs
+
+Source: the HEASARC's Bright Star Catalog table (heasarc_bsc5p)
+  https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/bsc5p.html
+  Identifier: ivo://nasa.heasarc/bsc5p
+  Listed under: https://www.usa.gov/government-works
+  Retrieved: 2026-11-06
+
+Citation: Hoffleit, D. and Warren, Jr., W.H., 1991, "The Bright Star Catalog, 5th Revised Edition
+(Preliminary Version)"; table created and revised by the HEASARC, NASA Goddard Space Flight Center.
+
+Use of this data does not imply endorsement by NASA or the HEASARC.

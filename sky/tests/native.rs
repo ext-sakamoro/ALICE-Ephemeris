@@ -18,10 +18,12 @@ fn the_outputs_hash_to_the_pinned_digest() {
     let mut h = Sha256::new();
     let mut n = 0;
     let mut pinned = None;
-    for line in text
-        .lines()
-        .filter(|l| !l.starts_with('#') && !l.is_empty() && !l.starts_with("moon-sha256 "))
-    {
+    for line in text.lines().filter(|l| {
+        !l.starts_with('#')
+            && !l.is_empty()
+            && !l.starts_with("moon-sha256 ")
+            && !l.starts_with("stars-sha256 ")
+    }) {
         if let Some(d) = line.strip_prefix("sha256 ") {
             pinned = Some(d.to_owned());
             continue;
@@ -73,10 +75,12 @@ fn the_moon_outputs_hash_to_the_pinned_digest() {
     let mut h = Sha256::new();
     let mut n = 0;
     let mut pinned = None;
-    for line in text
-        .lines()
-        .filter(|l| !l.starts_with('#') && !l.is_empty() && !l.starts_with("sha256 "))
-    {
+    for line in text.lines().filter(|l| {
+        !l.starts_with('#')
+            && !l.is_empty()
+            && !l.starts_with("sha256 ")
+            && !l.starts_with("stars-sha256 ")
+    }) {
         if let Some(d) = line.strip_prefix("moon-sha256 ") {
             pinned = Some(d.to_owned());
             continue;
@@ -126,4 +130,43 @@ fn the_moon_export_agrees_with_the_library_and_refuses_what_the_sun_refuses() {
     ] {
         assert!(bad.iter().all(|x| x.is_nan()), "{bad:?}");
     }
+}
+
+#[test]
+fn the_star_outputs_hash_to_the_pinned_digest_and_refuse_what_the_sun_refuses() {
+    let n = alice_ephemeris_sky::stars_len() as usize;
+    assert_eq!(n, 300);
+    let read = |ms: f64, lat: f64, lon: f64| -> Vec<f64> {
+        let p = alice_ephemeris_sky::stars_alt_az_mag(ms, lat, lon);
+        (0..n * 3).map(|i| unsafe { p.add(i).read() }).collect()
+    };
+    let text = include_str!("../expected.txt");
+    let mut h = Sha256::new();
+    let (mut inputs, mut pinned) = (0, None);
+    for line in text
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.is_empty())
+    {
+        if let Some(d) = line.strip_prefix("stars-sha256 ") {
+            pinned = Some(d.to_owned());
+            continue;
+        }
+        if line.contains("sha256") {
+            continue;
+        }
+        let v: Vec<f64> = line
+            .split_whitespace()
+            .map(|x| x.parse().expect("a number"))
+            .collect();
+        for x in read(v[0], v[1], v[2]) {
+            assert!(x.is_finite(), "{line}");
+            h.update(x.to_le_bytes());
+        }
+        inputs += 1;
+    }
+    assert_eq!(inputs, 24);
+    let got: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(pinned.as_deref(), Some(got.as_str()));
+    assert!(read(0.5, 0.0, 0.0).iter().all(|x| x.is_nan()));
+    assert!(read(0.0, 91.0, 0.0).iter().all(|x| x.is_nan()));
 }

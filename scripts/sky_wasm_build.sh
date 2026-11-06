@@ -6,12 +6,13 @@ set -euo pipefail
 repo=$(cd "$1" && pwd -P)
 out=$2
 cargo_home=$(cd "${CARGO_HOME:-$HOME/.cargo}" && pwd -P)
+rust_home=$(cd "$repo" && rustc --print sysroot)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 (
   cd "$repo"
   CARGO_TARGET_DIR="$work/target" \
-  RUSTFLAGS="--remap-path-prefix=$repo=/src --remap-path-prefix=$cargo_home=/cargo -C strip=symbols" \
+  RUSTFLAGS="--remap-path-prefix=$repo=/src --remap-path-prefix=$cargo_home=/cargo --remap-path-prefix=$rust_home=/rust -C strip=symbols" \
     cargo build --quiet --locked -p alice-ephemeris-sky --target wasm32-unknown-unknown --profile sky
 )
 cp "$work/target/wasm32-unknown-unknown/sky/alice_ephemeris_sky.wasm" "$out"

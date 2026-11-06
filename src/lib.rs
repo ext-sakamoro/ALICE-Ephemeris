@@ -47,6 +47,7 @@ mod instant;
 mod jd;
 pub mod law;
 pub mod leap;
+pub mod stars;
 pub mod sunmoon;
 mod sunmoon_table;
 pub mod tdb;

@@ -135,7 +135,12 @@ pub fn moon_phase(tt: Jd2) -> MoonPhase {
 }
 
 /// A geocentric GCRS position (au) as seen from the site.
-fn horizontal(gcrs: [f64; 3], c2t: &Mat3, site: &Site, site_itrs: [f64; 3]) -> Horizontal {
+pub(crate) fn horizontal(
+    gcrs: [f64; 3],
+    c2t: &Mat3,
+    site: &Site,
+    site_itrs: [f64; 3],
+) -> Horizontal {
     let b = mxv(c2t, gcrs);
     let d = [
         b[0] - site_itrs[0] / DAU,

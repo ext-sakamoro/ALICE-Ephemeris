@@ -6,6 +6,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- sky module: build 機に rust-src があるかで bytes が変わっていた (標準ライブラリの path の名前が違う) どちらでも `/rustc/<commit>` にそろえ、sysroot の写しの path は path scan で fail にする
+
 ### Changed
 
 - **Breaking:** 破壊的変更: `sunmoon::moon98` は `Pv` でなく `MoonPv { geocentric, in_range }` を返す `in_range` は日付が ERFA の精度の範囲 (ERFA の注 3 の ELP/MPP02 との比較の 1950–2100、J2000.0 から T が −0.5 から +1.0 Julian 世紀) にあるか (ERFA の routine は状態を返さない) 位置と速度の値と `law::MOON98` の識別子は変わらない

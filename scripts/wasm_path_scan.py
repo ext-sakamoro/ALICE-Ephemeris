@@ -2,13 +2,14 @@
 """A module served to the public must not carry the path it was built at.
 
 wasm_path_scan.py <module>...: every module's bytes are searched for what a build path looks like
-(a home directory, a temporary directory, a cargo home). Any hit fails; so does scanning nothing.
+(a home directory, a temporary directory, a cargo home, the sysroot's copy of the standard library,
+which only a machine with rust-src would name). Any hit fails; so does scanning nothing.
 """
 import re
 import sys
 from pathlib import Path
 
-PATTERNS = re.compile(rb"/Users/|/home/|/private/|/var/folders/|\.cargo/|\.rustup/|[A-Za-z]:\\+Users\\+")
+PATTERNS = re.compile(rb"/Users/|/home/|/private/|/var/folders/|\.cargo/|\.rustup/|rustlib/|[A-Za-z]:\\+Users\\+")
 
 
 def scan(paths):

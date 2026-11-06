@@ -25,7 +25,8 @@ pub struct Star {
     pub pm_ra: f64,
     /// Proper motion in declination, radians per Julian year
     pub pm_dec: f64,
-    /// Visual magnitude
+    /// V magnitude: the table's `vmag`. Its description says photographic, its UCD says
+    /// `em.opt.V`, and the named stars in `tests/oracle_stars.rs` have their V values
     pub mag: f32,
 }
 

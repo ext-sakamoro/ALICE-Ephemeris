@@ -507,6 +507,12 @@ step "ci.yml / browser: wasm path scan tests"
 ( export CARGO_TERM_COLOR="always"; python3 scripts/test_wasm_path_scan.py )
 )
 
+step "ci.yml / browser: the star table's generator (tests)"
+(
+  gh_step ci.yml.browser
+( export CARGO_TERM_COLOR="always"; python3 scripts/test_gen_star_table.py )
+)
+
 step "ci.yml / browser: sky module is the same built in 2 directories"
 (
   gh_step ci.yml.browser

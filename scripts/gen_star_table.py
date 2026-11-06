@@ -80,6 +80,7 @@ def table(stars, retrieved):
         f"// Source: {SOURCE_URL} ({IDENTIFIER}), retrieved {retrieved}\n"
         f"// Licence: {LICENCE_URL}\n"
         f"// Citation: {CITATION}\n"
+        "// Use of this data does not imply endorsement by NASA or the HEASARC.\n"
         "use crate::stars::Star;\n\n"
         "/// How many stars [`BRIGHTEST`] holds\n"
         f"pub const STAR_COUNT: usize = {len(stars)};\n\n"

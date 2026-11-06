@@ -89,7 +89,7 @@ class Brightest(unittest.TestCase):
 class Table(unittest.TestCase):
     def test_the_table_names_source_identifier_licence_date_and_citation(self):
         text = g.table(g.brightest([row(1)] + not_stars(), 1), "2026-11-06")
-        for needed in ["heasarc.gsfc.nasa.gov/W3Browse/star-catalog/bsc5p.html", "ivo://nasa.heasarc/bsc5p", "usa.gov/government-works", "retrieved 2026-11-06", "Hoffleit", "HEASARC", "STAR_COUNT: usize = 1"]:
+        for needed in ["heasarc.gsfc.nasa.gov/W3Browse/star-catalog/bsc5p.html", "ivo://nasa.heasarc/bsc5p", "usa.gov/government-works", "retrieved 2026-11-06", "Hoffleit", "HEASARC", "STAR_COUNT: usize = 1", "does not imply endorsement"]:
             self.assertIn(needed, text)
 
     def test_no_date_is_refused(self):

@@ -2,6 +2,7 @@
 // Source: https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/bsc5p.html (ivo://nasa.heasarc/bsc5p), retrieved 2026-11-06
 // Licence: https://www.usa.gov/government-works
 // Citation: Hoffleit, D. and Warren, Jr., W.H., 1991, The Bright Star Catalog, 5th Revised Edition (Preliminary Version); table by the HEASARC
+// Use of this data does not imply endorsement by NASA or the HEASARC.
 use crate::stars::Star;
 
 /// How many stars [`BRIGHTEST`] holds

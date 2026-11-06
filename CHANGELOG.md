@@ -6,9 +6,14 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `star_table`: Bright Star Catalog の等級 6.0 までの 5080 星 (`BRIGHTEST`、`STAR_COUNT`) と `stars`: 地平座標への変換
+- sky module: `moon_alt_az_lit`、`stars_alt_az_mag` 表は持たず、page が `sky/stars.bin` を `stars_table` に書いて `stars_table_written` で渡す (表が無ければ NaN)
+
 ### Changed
 
-- **Breaking:** 破壊的変更: `star_table::BRIGHTEST` を 300 星から 等級 6.0 までの 5080 星にした sky module は表を持たず、page が `sky/stars.bin` を `stars_table` に書いて `stars_table_written` で渡す (表が無ければ `stars_alt_az_mag` は NaN)
+- sky module: Moon の級数の範囲外の日付と 2^63 以上の時刻は NaN を返す
 
 ### Fixed
 

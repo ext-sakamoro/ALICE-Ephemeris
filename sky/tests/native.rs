@@ -127,9 +127,25 @@ fn the_moon_export_agrees_with_the_library_and_refuses_what_the_sun_refuses() {
         moon(f64::NAN, 0.0, 0.0),
         moon(0.0, 91.0, 0.0),
         moon(0.0, 0.0, 181.0),
+        // 2^63 is whole, and the cast to i64 saturates
+        moon(9_223_372_036_854_775_808.0, 0.0, 0.0),
+        // 2101: past the Moon series' range
+        moon(4_133_980_800_000.0, 0.0, 0.0),
     ] {
         assert!(bad.iter().all(|x| x.is_nan()), "{bad:?}");
     }
+}
+
+#[test]
+fn the_sun_goes_on_past_the_moon_s_range_and_stops_at_two_to_the_63() {
+    let sun = |ms: f64| unsafe {
+        let p = alice_ephemeris_sky::sun_alt_az(ms, 0.0, 0.0);
+        [p.read(), p.add(1).read()]
+    };
+    assert!(sun(4_133_980_800_000.0)[0].is_finite());
+    assert!(sun(9_223_372_036_854_775_808.0)[0].is_nan());
+    // and -2^63 is a whole i64, before UTC began
+    assert!(sun(-9_223_372_036_854_775_808.0)[0].is_nan());
 }
 
 #[test]

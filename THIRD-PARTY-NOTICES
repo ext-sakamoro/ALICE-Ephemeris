@@ -111,7 +111,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------
 
-Star positions, proper motions and magnitudes in src/star_table.rs
+Star positions, proper motions and magnitudes in src/star_table.rs and sky/stars.bin
 
 Source: the HEASARC's Bright Star Catalog table (heasarc_bsc5p)
   https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/bsc5p.html

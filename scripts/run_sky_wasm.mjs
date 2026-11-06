@@ -1,6 +1,6 @@
 // node scripts/run_sky_wasm.mjs <sky.wasm> <expected.txt>
-// The page's module, checked as a page uses it: it exports only `sun_alt_az`, `moon_alt_az_lit` and
-// `memory`; over the
+// The page's module, checked as a page uses it: it exports only `sun_alt_az`, `moon_alt_az_lit`,
+// `stars_alt_az_mag`, `stars_len`, `stars_table`, `stars_table_written` and `memory`; over the
 // inputs in expected.txt it gives the outputs whose sha256 the native test pinned there (0 inputs
 // fail); at the 2026 March equinox the Sun is overhead at the subsolar point and below the
 // antipode's horizon; what is not a time or a place gives NaN.
@@ -52,8 +52,11 @@ const gotStars = hs.digest('hex');
 if (gotStars !== starsPinned) problems.push(`stars outputs ${gotStars} != pinned ${starsPinned}`);
 const gotMoon = hm.digest('hex');
 if (gotMoon !== moonPinned) problems.push(`moon outputs ${gotMoon} != pinned ${moonPinned}`);
-console.log(`${got === pinned && gotMoon === moonPinned && n > 0 ? 'ok  ' : 'FAIL'} native bits over ${n} inputs, Sun and Moon`);
+console.log(`${got === pinned && gotMoon === moonPinned && gotStars === starsPinned && n > 0 ? 'ok  ' : 'FAIL'} native bits over ${n} inputs, stars, Sun and Moon`);
 
+if (!Number.isNaN(moon(4133980800000, 0, 0)[0])) problems.push('the Moon past its range gave a number');
+if (Number.isNaN(sun(4133980800000, 0, 0)[0])) problems.push('the Sun past the Moon\'s range gave NaN');
+if (!Number.isNaN(sun(2 ** 63, 0, 0)[0])) problems.push('2^63 gave a number');
 const deg = 180 / Math.PI;
 const equinox = Date.UTC(2026, 2, 20, 14, 46);
 const subsolar = -(15 * (14 + 46 / 60) - 180 - 7.5 / 4);

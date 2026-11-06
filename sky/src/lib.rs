@@ -14,6 +14,17 @@
 
 use alice_ephemeris::horizon::{sky_at_unix_ms, Site};
 
+/// A whole number of milliseconds an `i64` holds, and a place on the Earth. `2^63` is whole and would
+/// pass the round trip through the cast, which saturates: it is out of range
+fn valid_time_and_place(unix_ms: f64, latitude_deg: f64, longitude_deg: f64) -> bool {
+    const LIMIT: f64 = 9_223_372_036_854_775_808.0;
+    unix_ms.is_finite()
+        && (-LIMIT..LIMIT).contains(&unix_ms)
+        && unix_ms == (unix_ms as i64) as f64
+        && latitude_deg.abs() <= 90.0
+        && longitude_deg.abs() <= 180.0
+}
+
 /// Where [`sun_alt_az`] writes the Sun's altitude and azimuth (radians), two `f64`.
 static mut SUN_ALT_AZ: [f64; 2] = [0.0; 2];
 
@@ -25,10 +36,7 @@ static mut SUN_ALT_AZ: [f64; 2] = [0.0; 2];
 #[no_mangle]
 pub extern "C" fn sun_alt_az(unix_ms: f64, latitude_deg: f64, longitude_deg: f64) -> *const f64 {
     const DEG: f64 = core::f64::consts::PI / 180.0;
-    let valid = unix_ms.is_finite()
-        && unix_ms == (unix_ms as i64) as f64
-        && latitude_deg.abs() <= 90.0
-        && longitude_deg.abs() <= 180.0;
+    let valid = valid_time_and_place(unix_ms, latitude_deg, longitude_deg);
     let site = Site {
         latitude: latitude_deg * DEG,
         longitude: longitude_deg * DEG,
@@ -50,7 +58,8 @@ static mut MOON_ALT_AZ_LIT: [f64; 3] = [0.0; 3];
 
 /// The Moon's topocentric altitude and azimuth (radians, azimuth from north through east) and the
 /// illuminated fraction of its disc: as [`sun_alt_az`], for the same clock and place, three values
-/// at the returned pointer, all NaN when [`sun_alt_az`] would give NaN.
+/// at the returned pointer, all NaN when [`sun_alt_az`] would give NaN or the date is outside the
+/// Moon series' range.
 #[no_mangle]
 pub extern "C" fn moon_alt_az_lit(
     unix_ms: f64,
@@ -58,16 +67,17 @@ pub extern "C" fn moon_alt_az_lit(
     longitude_deg: f64,
 ) -> *const f64 {
     const DEG: f64 = core::f64::consts::PI / 180.0;
-    let valid = unix_ms.is_finite()
-        && unix_ms == (unix_ms as i64) as f64
-        && latitude_deg.abs() <= 90.0
-        && longitude_deg.abs() <= 180.0;
+    let valid = valid_time_and_place(unix_ms, latitude_deg, longitude_deg);
     let site = Site {
         latitude: latitude_deg * DEG,
         longitude: longitude_deg * DEG,
         height: 0.0,
     };
-    let out = match valid.then(|| sky_at_unix_ms(unix_ms as i64, &site)) {
+    // the Moon's series has a range of dates; outside it there is no Moon to give
+    let in_range = valid
+        && alice_ephemeris::horizon::tt_ut1_at_unix_ms(unix_ms as i64)
+            .is_ok_and(|(tt, _)| alice_ephemeris::sunmoon::moon98(tt).in_range);
+    let out = match in_range.then(|| sky_at_unix_ms(unix_ms as i64, &site)) {
         Some(Ok(sky)) => [
             sky.moon.altitude,
             sky.moon.azimuth,
@@ -145,11 +155,7 @@ pub extern "C" fn stars_alt_az_mag(
     const DEG: f64 = core::f64::consts::PI / 180.0;
     // a wasm32 page runs this on one thread; nothing else holds the flag
     let ready = unsafe { core::ptr::addr_of!(STAR_TABLE_READY).read() };
-    let valid = ready
-        && unix_ms.is_finite()
-        && unix_ms == (unix_ms as i64) as f64
-        && latitude_deg.abs() <= 90.0
-        && longitude_deg.abs() <= 180.0;
+    let valid = ready && valid_time_and_place(unix_ms, latitude_deg, longitude_deg);
     let site = Site {
         latitude: latitude_deg * DEG,
         longitude: longitude_deg * DEG,

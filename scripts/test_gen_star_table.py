@@ -89,11 +89,17 @@ class Brightest(unittest.TestCase):
 class Table(unittest.TestCase):
     def test_the_table_names_source_identifier_licence_date_and_citation(self):
         text = g.table(g.brightest([row(1)] + not_stars(), 1), "2026-11-06")
-        for needed in ["heasarc.gsfc.nasa.gov/W3Browse/star-catalog/bsc5p.html", "ivo://nasa.heasarc/bsc5p", "usa.gov/government-works", "retrieved 2026-11-06", "Hoffleit", "HEASARC", "BRIGHTEST: [Star; 1]"]:
+        for needed in ["heasarc.gsfc.nasa.gov/W3Browse/star-catalog/bsc5p.html", "ivo://nasa.heasarc/bsc5p", "usa.gov/government-works", "retrieved 2026-11-06", "Hoffleit", "HEASARC", "STAR_COUNT: usize = 1"]:
             self.assertIn(needed, text)
 
     def test_no_date_is_refused(self):
-        self.assertEqual(g.main(["x", "1", "soon", "y"]), 2)
+        self.assertEqual(g.main(["x", "1", "soon", "y", "z"]), 2)
+
+    def test_the_binary_is_36_little_endian_bytes_a_star(self):
+        b = g.binary([(1.0, -2.0, 0.5, 0.25, 1.5)])
+        self.assertEqual(len(b), 36)
+        self.assertEqual(b[:8], b"\0\0\0\0\0\0\xf0\x3f")
+        self.assertEqual(b[32:], b"\0\0\xc0\x3f")
 
 
 if __name__ == "__main__":

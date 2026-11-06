@@ -6,6 +6,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** 破壊的変更: `star_table::BRIGHTEST` を 300 星から 等級 6.0 までの 5080 星にした sky module は表を持たず、page が `sky/stars.bin` を `stars_table` に書いて `stars_table_written` で渡す (表が無ければ `stars_alt_az_mag` は NaN)
+
 ### Fixed
 
 - sky module: build 機に rust-src があるかで bytes が変わっていた (標準ライブラリの path の名前が違う) どちらでも `/rustc/<commit>` にそろえ、sysroot の写しの path は path scan で fail にする

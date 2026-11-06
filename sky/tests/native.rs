@@ -135,7 +135,20 @@ fn the_moon_export_agrees_with_the_library_and_refuses_what_the_sun_refuses() {
 #[test]
 fn the_star_outputs_hash_to_the_pinned_digest_and_refuse_what_the_sun_refuses() {
     let n = alice_ephemeris_sky::stars_len() as usize;
-    assert_eq!(n, 300);
+    assert_eq!(n, 5080);
+    let bin = include_bytes!("../stars.bin");
+    assert_eq!(bin.len(), n * 36);
+    // before a whole table, and with the wrong length, it refuses
+    assert!(unsafe { alice_ephemeris_sky::stars_alt_az_mag(0.0, 0.0, 0.0).read() }.is_nan());
+    assert_eq!(alice_ephemeris_sky::stars_table_written(35), 0);
+    assert!(unsafe { alice_ephemeris_sky::stars_alt_az_mag(0.0, 0.0, 0.0).read() }.is_nan());
+    unsafe {
+        core::ptr::copy_nonoverlapping(bin.as_ptr(), alice_ephemeris_sky::stars_table(), bin.len());
+    }
+    assert_eq!(
+        alice_ephemeris_sky::stars_table_written(bin.len() as u32),
+        1
+    );
     let read = |ms: f64, lat: f64, lon: f64| -> Vec<f64> {
         let p = alice_ephemeris_sky::stars_alt_az_mag(ms, lat, lon);
         (0..n * 3).map(|i| unsafe { p.add(i).read() }).collect()

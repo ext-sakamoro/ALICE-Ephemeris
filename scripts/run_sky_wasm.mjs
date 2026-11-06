@@ -14,7 +14,7 @@ const ex = instance.exports;
 const problems = [];
 
 const names = Object.keys(ex).sort();
-if (names.join(',') !== 'memory,moon_alt_az_lit,stars_alt_az_mag,stars_len,sun_alt_az') problems.push(`exports: ${names.join(', ')}`);
+if (names.join(',') !== 'memory,moon_alt_az_lit,stars_alt_az_mag,stars_len,stars_table,stars_table_written,sun_alt_az') problems.push(`exports: ${names.join(', ')}`);
 
 const sun = (ms, lat, lon) => Array.from(new Float64Array(ex.memory.buffer, ex.sun_alt_az(ms, lat, lon), 2));
 
@@ -26,6 +26,11 @@ let n = 0;
 const h = crypto.createHash('sha256');
 const hm = crypto.createHash('sha256');
 const hs = crypto.createHash('sha256');
+const table = fs.readFileSync(new URL('../sky/stars.bin', import.meta.url));
+if (!Number.isNaN(new Float64Array(ex.memory.buffer, ex.stars_alt_az_mag(0, 0, 0), 1)[0])) problems.push('stars gave a number with no table');
+if (ex.stars_table_written(table.length - 1) !== 0) problems.push('a short table was taken');
+new Uint8Array(ex.memory.buffer, ex.stars_table(), table.length).set(table);
+if (ex.stars_table_written(table.length) !== 1) problems.push('the whole table was refused');
 const stars = (ms, lat, lon) => Array.from(new Float64Array(ex.memory.buffer, ex.stars_alt_az_mag(ms, lat, lon), ex.stars_len() * 3));
 let starsPinned = null;
 for (const line of fs.readFileSync(expectedPath, 'utf8').split('\n')) {

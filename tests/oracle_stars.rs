@@ -3,6 +3,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use alice_det_math::{acos64, cos64, max64, min64, sin_cos64};
 use alice_ephemeris::horizon::Site;
 use alice_ephemeris::star_table::BRIGHTEST;
 use alice_ephemeris::stars::{stars_in_sky, Star};
@@ -20,6 +21,15 @@ fn site(lat: f64, lon: f64) -> Site {
         longitude: lon * DEG,
         height: 0.0,
     }
+}
+
+/// The angle between two directions given by altitude and azimuth
+fn angle_between(alt_a: f64, az_a: f64, alt_b: f64, az_b: f64) -> f64 {
+    let ((sa, ca), (sb, cb)) = (sin_cos64(alt_a), sin_cos64(alt_b));
+    acos64(min64(
+        max64(sa * sb + ca * cb * cos64(az_a - az_b), -1.0),
+        1.0,
+    ))
 }
 
 #[test]
@@ -55,9 +65,7 @@ fn the_directions_agree_with_erfa() {
             .expect("one star");
         // the angle between the two directions, so the azimuth near the zenith does not count
         let (a, b) = (v[11], h.altitude);
-        let d = (a.sin() * b.sin() + a.cos() * b.cos() * (v[10] - h.azimuth).cos())
-            .clamp(-1.0, 1.0)
-            .acos();
+        let d = angle_between(a, v[10], b, h.azimuth);
         assert!(
             d < WITHIN,
             "{line}: {} arcsec, altitude {} azimuth {}",
@@ -65,7 +73,7 @@ fn the_directions_agree_with_erfa() {
             b / DEG,
             h.azimuth / DEG
         );
-        worst = worst.max(d);
+        worst = max64(worst, d);
         compared += 1;
         if b < 0.0 {
             below += 1;
@@ -207,10 +215,7 @@ fn proper_motion_moves_it_by_what_it_says() {
             .next()
             .unwrap(),
     );
-    let d = (a.altitude.sin() * b.altitude.sin()
-        + a.altitude.cos() * b.altitude.cos() * (a.azimuth - b.azimuth).cos())
-    .clamp(-1.0, 1.0)
-    .acos();
+    let d = angle_between(a.altitude, a.azimuth, b.altitude, b.azimuth);
     assert!((d / ARCSEC - 1000.0).abs() < 1.0, "{}", d / ARCSEC);
 }
 
@@ -242,10 +247,7 @@ fn proper_motion_in_right_ascension_is_measured_along_the_sky() {
             .next()
             .unwrap(),
     );
-    let d = (a.altitude.sin() * b.altitude.sin()
-        + a.altitude.cos() * b.altitude.cos() * (a.azimuth - b.azimuth).cos())
-    .clamp(-1.0, 1.0)
-    .acos();
+    let d = angle_between(a.altitude, a.azimuth, b.altitude, b.azimuth);
     assert!((d / ARCSEC - 1000.0).abs() < 1.0, "{}", d / ARCSEC);
 }
 
@@ -268,7 +270,7 @@ fn the_table_holds_the_named_stars_where_they_are_published() {
             .iter()
             .find(|s| {
                 let c = (s.dec / DEG - dec).abs() < 0.05;
-                let a = ((s.ra / DEG - ra) * (dec * DEG).cos()).abs() < 0.05;
+                let a = ((s.ra / DEG - ra) * cos64(dec * DEG)).abs() < 0.05;
                 c && a
             })
             .unwrap_or_else(|| panic!("{name} is not in the table"));
@@ -279,11 +281,12 @@ fn the_table_holds_the_named_stars_where_they_are_published() {
 }
 
 #[test]
-fn the_table_is_three_hundred_stars_in_order_with_sane_values() {
-    assert_eq!(BRIGHTEST.len(), 300);
+fn the_table_is_every_star_to_magnitude_six_in_order_with_sane_values() {
+    // the catalogue has 5080 rows with a magnitude of 6.0 or brighter
+    assert_eq!(BRIGHTEST.len(), 5080);
     assert!(BRIGHTEST.windows(2).all(|w| w[0].mag <= w[1].mag));
     assert_eq!(BRIGHTEST[0].mag, -1.46);
-    assert!(BRIGHTEST[299].mag < 3.7, "{}", BRIGHTEST[299].mag);
+    assert_eq!(BRIGHTEST[5079].mag, 6.0);
     for s in &BRIGHTEST {
         assert!((0.0..core::f64::consts::TAU).contains(&s.ra));
         assert!(s.dec.abs() <= 90.0 * DEG);
@@ -302,6 +305,20 @@ fn the_table_is_three_hundred_stars_in_order_with_sane_values() {
                 .any(|s| (s.ra / DEG - ra).abs() < 0.02 && (s.dec / DEG - dec).abs() < 0.02),
             "{ra} {dec}"
         );
+    }
+}
+
+#[test]
+fn the_file_a_page_fetches_is_the_table_byte_for_byte() {
+    let bin = include_bytes!("../sky/stars.bin");
+    assert_eq!(bin.len(), BRIGHTEST.len() * 36);
+    for (row, s) in bin.chunks_exact(36).zip(&BRIGHTEST) {
+        let mut want = Vec::with_capacity(36);
+        for v in [s.ra, s.dec, s.pm_ra, s.pm_dec] {
+            want.extend_from_slice(&v.to_le_bytes());
+        }
+        want.extend_from_slice(&s.mag.to_le_bytes());
+        assert_eq!(row, &want[..]);
     }
 }
 
@@ -328,8 +345,6 @@ fn a_named_star_stands_where_erfa_puts_it_by_the_table_s_own_values() {
         .next()
         .unwrap();
     let (a, b) = (v[11], h.altitude);
-    let d = (a.sin() * b.sin() + a.cos() * b.cos() * (v[10] - h.azimuth).cos())
-        .clamp(-1.0, 1.0)
-        .acos();
+    let d = angle_between(a, v[10], b, h.azimuth);
     assert!(d < 40.0 * ARCSEC, "{} arcsec", d / ARCSEC);
 }

@@ -53,6 +53,8 @@ checks! {
     check_time_reference_digests => law_ids::reference_digests_check,
     check_time_test_grid_digests => law_ids::test_grid_digests_check,
     check_time_semantics_ids => law_ids::semantics_ids_check,
+    check_time_det_math_entries => law_ids::every_det_math_entry_is_the_resolved_function_check,
+    check_time_earlier_identifiers => law_ids::the_earlier_identifiers_name_their_laws_and_only_those_check,
     check_eo_reference_grids_are_frozen => law_ids_earth_orientation::reference_grids_are_frozen_check,
     check_eo_reference_digests => law_ids_earth_orientation::reference_digests_check,
     check_eo_semantics_ids => law_ids_earth_orientation::semantics_ids_check,

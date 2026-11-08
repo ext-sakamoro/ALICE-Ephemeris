@@ -405,6 +405,10 @@ fn f64s(v: &[f64]) -> Vec<u8> {
 
 #[test]
 fn every_det_math_entry_is_the_resolved_function() {
+    every_det_math_entry_is_the_resolved_function_check();
+}
+
+pub(crate) fn every_det_math_entry_is_the_resolved_function_check() {
     assert!(!law::DET_MATH_PINS.is_empty());
     assert_eq!(law::DET_MATH_FUNCTIONS.len(), law::DET_MATH_PINS.len());
     for (want, (name, digest)) in law::DET_MATH_FUNCTIONS.iter().zip(law::DET_MATH_PINS) {
@@ -415,6 +419,10 @@ fn every_det_math_entry_is_the_resolved_function() {
 
 #[test]
 fn the_earlier_identifiers_name_their_laws_and_only_those() {
+    the_earlier_identifiers_name_their_laws_and_only_those_check();
+}
+
+pub(crate) fn the_earlier_identifiers_name_their_laws_and_only_those_check() {
     assert_eq!(law::PREVIOUS_SEMANTICS_IDS.len(), 8);
     for (name, id) in law::PREVIOUS_SEMANTICS_IDS {
         let l = law::ALL

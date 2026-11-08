@@ -308,18 +308,49 @@ fn the_table_is_every_star_to_magnitude_six_in_order_with_sane_values() {
     }
 }
 
+/// The file a page fetches is the table: read as the generator wrote it (a column at a time: ra, dec as i32 in 1e-4
+/// degree, pm_ra, pm_dec as i16 in 1e-3 arcsec a year, mag as i16 in hundredths), every star's every value is the
+/// table's own f64 / f32, bit for bit, in the table's order (brightest first). Read here on its own, not through the
+/// sky module
 #[test]
-fn the_file_a_page_fetches_is_the_table_byte_for_byte() {
+fn the_file_a_page_fetches_is_the_table_bit_for_bit() {
     let bin = include_bytes!("../sky/stars.bin");
-    assert_eq!(bin.len(), BRIGHTEST.len() * 36);
-    for (row, s) in bin.chunks_exact(36).zip(&BRIGHTEST) {
-        let mut want = Vec::with_capacity(36);
-        for v in [s.ra, s.dec, s.pm_ra, s.pm_dec] {
-            want.extend_from_slice(&v.to_le_bytes());
+    let n = BRIGHTEST.len();
+    assert_eq!(bin.len(), n * 14, "14 bytes a star");
+    let int = |at: usize, size: usize| -> f64 {
+        let b = &bin[at..at + size];
+        if size == 4 {
+            f64::from(i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        } else {
+            f64::from(i16::from_le_bytes([b[0], b[1]]))
         }
-        want.extend_from_slice(&s.mag.to_le_bytes());
-        assert_eq!(row, &want[..]);
+    };
+    let deg = std::f64::consts::PI / 180.0;
+    let arcsec = deg / 3600.0;
+    let mut compared = 0;
+    for (i, s) in BRIGHTEST.iter().enumerate() {
+        let got = [
+            (int(4 * i, 4) / 1e4) * deg,
+            (int(4 * n + 4 * i, 4) / 1e4) * deg,
+            (int(8 * n + 2 * i, 2) / 1e3) * arcsec,
+            (int(10 * n + 2 * i, 2) / 1e3) * arcsec,
+        ];
+        let want = [s.ra, s.dec, s.pm_ra, s.pm_dec];
+        for (g, w) in got.iter().zip(want) {
+            assert_eq!(g.to_bits(), w.to_bits(), "star {i}: {g} for {w}");
+            compared += 1;
+        }
+        let mag = (int(12 * n + 2 * i, 2) / 100.0) as f32;
+        assert_eq!(
+            mag.to_bits(),
+            s.mag.to_bits(),
+            "star {i}: magnitude {mag} for {}",
+            s.mag
+        );
+        compared += 1;
     }
+    assert_eq!(compared, 5 * n);
+    assert!(n > 5000, "{n} stars");
 }
 
 #[test]

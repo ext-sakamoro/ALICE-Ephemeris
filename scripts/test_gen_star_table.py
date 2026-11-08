@@ -95,11 +95,31 @@ class Table(unittest.TestCase):
     def test_no_date_is_refused(self):
         self.assertEqual(g.main(["x", "1", "soon", "y", "z"]), 2)
 
-    def test_the_binary_is_36_little_endian_bytes_a_star(self):
-        b = g.binary([(1.0, -2.0, 0.5, 0.25, 1.5)])
-        self.assertEqual(len(b), 36)
-        self.assertEqual(b[:8], b"\0\0\0\0\0\0\xf0\x3f")
-        self.assertEqual(b[32:], b"\0\0\xc0\x3f")
+    def test_the_binary_is_the_catalogue_decimals_in_columns_14_bytes_a_star(self):
+        # two stars as a row of the catalogue reads (degrees, arcsec a year, magnitude)
+        rows_ = [g.star(row(1, ra="101.2872", dec="-16.7161", pmra="-0.553", pmdec="-1.205", vmag="-1.46")),
+                 g.star(row(2, ra="0.5", dec="45.5", pmra="0.1", pmdec="0", vmag="6.0"))]
+        b = g.binary(rows_)
+        self.assertEqual(len(b), 2 * 14)
+        # ra column first: 1012872 and 5000 in 1e-4 degree, little endian
+        self.assertEqual(b[:8], (1012872).to_bytes(4, "little") + (5000).to_bytes(4, "little"))
+        # the magnitudes last, in hundredths
+        self.assertEqual(b[-4:], (-146).to_bytes(2, "little", signed=True) + (600).to_bytes(2, "little", signed=True))
+        # read back, each value is the same float as the row gave, bit for bit
+        back = g.read_binary(b, 2)
+        for got, want in zip(back, rows_):
+            self.assertEqual([x.hex() for x in got[:4]], [x.hex() for x in want[:4]])
+            self.assertEqual(got[4], g.f32(want[4]))
+
+    def test_a_value_finer_than_the_catalogue_decimals_stops(self):
+        with self.assertRaises(ValueError):
+            g.binary([(1.0, 0.0, 0.0, 0.0, 1.0)])
+        with self.assertRaises(ValueError):
+            g.binary([(0.0, 0.0, 0.0, 0.0, 1.005)])
+
+    def test_a_file_of_the_wrong_length_stops(self):
+        with self.assertRaises(ValueError):
+            g.read_binary(b"\0" * 27, 2)
 
 
 if __name__ == "__main__":

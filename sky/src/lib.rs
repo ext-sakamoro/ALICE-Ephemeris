@@ -98,14 +98,16 @@ pub extern "C" fn stars_len() -> u32 {
 }
 
 const STARS: usize = alice_ephemeris::star_table::STAR_COUNT;
-/// A star in `sky/stars.bin`: ra, dec, pm_ra, pm_dec as `f64`, mag as `f32`, little endian.
-const STAR_BYTES: usize = 36;
+/// `sky/stars.bin`: the catalogue's decimals as whole numbers, a column at a time, little endian
+/// (`scripts/gen_star_table.py`): ra and dec as `i32` in 1e-4 degree, pm_ra and pm_dec as `i16` in 1e-3 arcsec a
+/// year, mag as `i16` in hundredths, each column [`stars_len`] long. 14 bytes a star.
+const STAR_BYTES: usize = 14;
 /// Where the page writes `sky/stars.bin`.
 static mut STAR_TABLE: [u8; STARS * STAR_BYTES] = [0; STARS * STAR_BYTES];
 /// Whether [`stars_table_written`] has been told a whole table is there.
 static mut STAR_TABLE_READY: bool = false;
 
-/// Where to write `sky/stars.bin`, [`stars_len`] times 36 bytes, before [`stars_table_written`].
+/// Where to write `sky/stars.bin`, [`stars_len`] times 14 bytes, before [`stars_table_written`].
 #[no_mangle]
 pub extern "C" fn stars_table() -> *mut u8 {
     core::ptr::addr_of_mut!(STAR_TABLE).cast::<u8>()
@@ -121,21 +123,30 @@ pub extern "C" fn stars_table_written(bytes: u32) -> u32 {
     u32::from(whole)
 }
 
+/// A degree and an arcsecond in radians, as the generator takes them (`math.pi / 180`, `math.pi / 180 / 3600`)
+const DEG: f64 = core::f64::consts::PI / 180.0;
+const ARCSEC: f64 = core::f64::consts::PI / 180.0 / 3600.0;
+
 fn star_in_table(table: &[u8; STARS * STAR_BYTES], i: usize) -> alice_ephemeris::stars::Star {
-    let row = &table[i * STAR_BYTES..(i + 1) * STAR_BYTES];
-    let f = |at: usize| {
-        let mut b = [0u8; 8];
-        b.copy_from_slice(&row[at..at + 8]);
-        f64::from_le_bytes(b)
+    // column starts: ra, dec (4 bytes a star), then pm_ra, pm_dec, mag (2 bytes a star)
+    let i32_at = |col: usize| {
+        let at = col * 4 * STARS + i * 4;
+        let mut b = [0u8; 4];
+        b.copy_from_slice(&table[at..at + 4]);
+        f64::from(i32::from_le_bytes(b))
     };
-    let mut m = [0u8; 4];
-    m.copy_from_slice(&row[32..36]);
+    let i16_at = |col: usize| {
+        let at = 8 * STARS + col * 2 * STARS + i * 2;
+        f64::from(i16::from_le_bytes([table[at], table[at + 1]]))
+    };
+    // each a whole number of the catalogue's last decimal: divided by its scale (exact operands, one rounding) it is
+    // the decimal the catalogue gives, then taken to radians as the table's own values were
     alice_ephemeris::stars::Star {
-        ra: f(0),
-        dec: f(8),
-        pm_ra: f(16),
-        pm_dec: f(24),
-        mag: f32::from_le_bytes(m),
+        ra: (i32_at(0) / 1e4) * DEG,
+        dec: (i32_at(1) / 1e4) * DEG,
+        pm_ra: (i16_at(0) / 1e3) * ARCSEC,
+        pm_dec: (i16_at(1) / 1e3) * ARCSEC,
+        mag: (i16_at(2) / 100.0) as f32,
     }
 }
 

@@ -4,8 +4,13 @@ motion and magnitude only, in the table's J2000 degrees and arcsec per year.
 
     python3 scripts/gen_star_table.py <heasarc_bsc5p.tdat> <how many> <retrieved YYYY-MM-DD> <out.rs> <out.bin>
 
-The .bin is the same rows for a page to fetch once it is dark, so they are not in its first module:
-per star ra, dec, pm_ra, pm_dec as f64 and mag as f32, little endian, no padding.
+The .bin is the same rows for a page to fetch once it is dark, so they are not in its first module. The catalogue
+gives every value to a fixed number of decimals (ra and dec to 1e-4 degree, proper motion to 1e-3 arcsec a year,
+magnitude to 1e-2), so the file holds those decimals as whole numbers, a column at a time, little endian:
+ra as i32 (1e-4 degree), dec as i32 (1e-4 degree), pm_ra and pm_dec as i16 (1e-3 arcsec a year), mag as i16
+(1e-2), each column `count` long, 14 bytes a star. Read back as (n / scale) * DEG (and ARCSEC), and the magnitude
+as (n / 100) taken to f32, each is the same f64 / f32 as in the .rs, bit for bit: the run checks every value and
+stops if one is not (`binary`), so the file never drifts from the table.
 
 A row with no magnitude has nothing to draw. That leaves out the 14 objects that are not stars, which
 have HR numbers and positions and no magnitude: the run checks all 14 are gone and that the table has
@@ -91,8 +96,51 @@ def table(stars, retrieved):
     )
 
 
+# the compact file: each column's whole-number unit (what the catalogue's decimals are), its range, its packing
+COLUMNS = (("ra", DEG, 1e4, "i"), ("dec", DEG, 1e4, "i"), ("pm_ra", ARCSEC, 1e3, "h"), ("pm_dec", ARCSEC, 1e3, "h"))
+RANGE = {"i": (-(2**31), 2**31 - 1), "h": (-(2**15), 2**15 - 1)}
+
+
+def f32(v):
+    return struct.unpack("<f", struct.pack("<f", v))[0]
+
+
+def whole(v, unit, scale, kind, what):
+    """`v` as a whole number of the column's units, read back to the same bits; anything else stops the run"""
+    n = round(v / unit * scale)
+    lo, hi = RANGE[kind]
+    if not lo <= n <= hi or (n / scale) * unit != v:
+        raise ValueError(f"{what} {v!r} is not a whole number of 1/{scale:g} of its unit in range")
+    return n
+
+
 def binary(stars):
-    return b"".join(struct.pack("<4df", *s) for s in stars)
+    out = []
+    for c, (name, unit, scale, kind) in enumerate(COLUMNS):
+        col = [whole(s[c], unit, scale, kind, name) for s in stars]
+        out.append(struct.pack(f"<{len(col)}{kind}", *col))
+    mags = []
+    for s in stars:
+        n = round(s[4] * 100)
+        if not RANGE["h"][0] <= n <= RANGE["h"][1] or f32(n / 100) != f32(s[4]):
+            raise ValueError(f"mag {s[4]!r} is not a whole number of hundredths")
+        mags.append(n)
+    out.append(struct.pack(f"<{len(mags)}h", *mags))
+    return b"".join(out)
+
+
+def read_binary(data, count):
+    """The rows of a compact file of `count` stars, as `binary` wrote them (the reader the sky module implements)"""
+    if len(data) != count * 14:
+        raise ValueError(f"{len(data)} bytes are not {count} stars of 14")
+    at, cols = 0, []
+    for name, unit, scale, kind in COLUMNS:
+        size = 4 if kind == "i" else 2
+        col = struct.unpack_from(f"<{count}{kind}", data, at)
+        at += size * count
+        cols.append([(n / scale) * unit for n in col])
+    mags = [f32(n / 100) for n in struct.unpack_from(f"<{count}h", data, at)]
+    return [(cols[0][i], cols[1][i], cols[2][i], cols[3][i], mags[i]) for i in range(count)]
 
 
 def main(argv):

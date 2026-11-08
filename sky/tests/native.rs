@@ -153,7 +153,7 @@ fn the_star_outputs_hash_to_the_pinned_digest_and_refuse_what_the_sun_refuses() 
     let n = alice_ephemeris_sky::stars_len() as usize;
     assert_eq!(n, 5080);
     let bin = include_bytes!("../stars.bin");
-    assert_eq!(bin.len(), n * 36);
+    assert_eq!(bin.len(), n * 14);
     // before a whole table, and with the wrong length, it refuses
     assert!(unsafe { alice_ephemeris_sky::stars_alt_az_mag(0.0, 0.0, 0.0).read() }.is_nan());
     assert_eq!(alice_ephemeris_sky::stars_table_written(35), 0);

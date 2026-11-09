@@ -429,7 +429,7 @@ has_toolchain() { grep -q "^$1" <<<"$(rustup toolchain list)"; }
 
 # Steps CI runs that this file cannot reproduce locally (they can only fail remotely):
 #   - ci.yml:wasm:Ensure wasm32-wasip1 rust-std is installed (no cargo / grep)
-#   - ci.yml:wasm: uses bytecodealliance/actions/wasmtime/setup@v1 (an action this file cannot run)
+#   - ci.yml:wasm: uses actions/cache@v6 (an action this file cannot run); Install wasmtime / Check wasmtime runs fetch the linux x86_64 tarball into $RUNNER_TEMP (runner-only, here wasmtime comes from PATH)
 #   - ci.yml:browser:Ensure wasm32-unknown-unknown rust-std is installed (no cargo / grep)
 #   - ci.yml:browser: uses actions/setup-node@v5 (an action this file cannot run)
 #   - ci.yml:no-std:Ensure thumbv7em-none-eabihf rust-std is installed (no cargo / grep)

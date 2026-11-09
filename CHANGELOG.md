@@ -7,6 +7,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- CI: wasm32 の job の wasmtime を v49.0.2 に固定し、配布物を SHA-256 (a4d6e9e3…、release の digest と手元の再計算で一致) で照合して retry 付きで取り、binary を cache する 配布元が落ち続けた時は同じ版の wasmtime-cli を crates.io から `cargo install --locked` で作る `wasmtime --version` が動かなければ fail (setup action は latest を選び、配布元の HTTP 504 で他の repository の job が落ちた)
+
+### Changed
 
 - `sky/stars.bin` を 14 byte / 星にした (36 → 14、brotli 100,605 → 40,691 byte): 星表の値は全部決まった桁の小数 (赤経・赤緯は 1e-4 度、固有運動は 1e-3 秒角 / 年、等級は 0.01) なので、その桁の整数を列ごとに持つ (ra・dec は i32、pm_ra・pm_dec・mag は i16、little endian) 読み戻した値は `star_table::BRIGHTEST` の f64 / f32 と bit で一致し (全 5080 星を `tests/oracle_stars.rs` で照合)、sky module の星の出力の digest は不変 生成器は bit で一致しない値があると止まる `stars_table_written` が受け取る大きさは `stars_len` × 14
 - Law 識別子 8 本 (`tdb-spice-et` / `tdb-fb1990` / `julian-date` / `teme-itrs-gmst82` / `iau2006-2000a-cio` / `earth-epv00` / `moon98` / `sun-moon-horizon`) は `alice-det-math` 全体の識別子でなく、この crate が呼ぶ 8 関数の識別子 (`law::DET_MATH_FUNCTIONS` / `DET_MATH_PINS`) を畳む 基準の格子の出力の digest は全部不変 前の値は `law::PREVIOUS_SEMANTICS_IDS` に残し、`law::names_law` が両方を読む 呼ばない関数が動いても識別子は動かず、呼ぶ関数が動けば compile が止まる `alice-det-math` は rev から `branch = "main"` + version 0.6 に

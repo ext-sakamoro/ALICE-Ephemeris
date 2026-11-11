@@ -65,11 +65,22 @@ checks! {
     check_sunmoon_unix_sky_digest => law_ids_sunmoon::unix_sky_digest_check,
 }
 
-/// The `alice_det_math::SEMANTICS_ID` this build computes with (32 bytes at the returned
-/// pointer), printed by the runner so a log says which arithmetic the browser build ran.
+/// The number of Laws of the crate (`alice_ephemeris::law::ALL`), for `law_semantics_id`.
 #[no_mangle]
-pub extern "C" fn det_math_semantics_id() -> *const u8 {
-    alice_det_math::SEMANTICS_ID.as_ptr()
+pub extern "C" fn law_count() -> u32 {
+    alice_ephemeris::law::ALL.len() as u32
+}
+
+/// The semantics identifier of the `i`-th Law of `alice_ephemeris::law::ALL` (32 bytes at
+/// the returned pointer, null past the end), printed by the runner so a log says which
+/// Laws the browser build computed: each identifier folds the identifiers of the
+/// alice-det-math functions the crate calls (`law::DET_MATH_PINS`).
+#[no_mangle]
+pub extern "C" fn law_semantics_id(i: u32) -> *const u8 {
+    match alice_ephemeris::law::ALL.get(i as usize) {
+        Some(law) => law.semantics_id.as_ptr(),
+        None => core::ptr::null(),
+    }
 }
 
 /// Cost probe for the runner (reported, not gated): `n` evaluations of the

@@ -39,7 +39,12 @@ ex.bench_sky(n);
 const us = ((performance.now() - t) * 1000) / n;
 const bytes = fs.statSync(wasmPath).size;
 const hex = (p) => Buffer.from(new Uint8Array(ex.memory.buffer, p, 32)).toString('hex');
-console.log(`report: det-math semantics ${hex(ex.det_math_semantics_id())}`);
+const laws = ex.law_count();
+for (let i = 0; i < laws; i += 1) console.log(`report: law ${i} semantics ${hex(ex.law_semantics_id(i))}`);
+if (laws === 0 || ex.law_semantics_id(laws) !== 0) {
+  console.error('browser lane: law_count() must be non-zero and law_semantics_id(law_count()) null');
+  process.exit(1);
+}
 console.log(`report: horizon::sky ${us.toFixed(1)} µs/call (node, ${n} calls); browser build ${bytes} bytes`);
 
 if (failed > 0 || ran === 0 || ran !== count || count !== tests) {

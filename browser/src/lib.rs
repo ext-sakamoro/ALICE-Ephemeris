@@ -22,6 +22,10 @@ extern crate self as alice_ephemeris_browser;
 
 pub mod law_digest;
 
+// tests/law_ids.rs (included below) checks each `DET_MATH_PINS` entry against
+// `alice_det_math::function_pin`: the crate is a dependency of this build for that check
+use alice_det_math as _;
+
 #[path = "../../tests/law_ids.rs"]
 mod law_ids;
 #[path = "../../tests/law_ids_earth_orientation.rs"]

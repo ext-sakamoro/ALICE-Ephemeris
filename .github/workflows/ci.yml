@@ -149,6 +149,13 @@ jobs:
         run: python3 scripts/test_wasm_path_scan.py
       - name: the star table's generator (tests)
         run: python3 scripts/test_gen_star_table.py
+      # every tracked Cargo.lock takes each alice-* crate by git and with the same source as the other
+      # locks (scripts/lock_sources_check.py, shared with the other ALICE crates; exemptions in
+      # scripts/lock_sources.toml); no lock read fails
+      - name: Lock sources and agreement across workspaces (test, then check)
+        run: |
+          python3 scripts/test_lock_sources_check.py
+          python3 scripts/lock_sources_check.py
       - name: sky module is the same built in 2 directories
         run: scripts/sky_wasm_repro.sh
 

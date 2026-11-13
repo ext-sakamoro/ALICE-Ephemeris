@@ -513,6 +513,16 @@ step "ci.yml / browser: the star table's generator (tests)"
 ( export CARGO_TERM_COLOR="always"; python3 scripts/test_gen_star_table.py )
 )
 
+step "ci.yml / browser: Upstream previous identifiers (test, then whole-list uses only)"
+(
+  gh_step ci.yml.browser
+(
+  export CARGO_TERM_COLOR="always"
+  python3 scripts/test_upstream_previous_ids_check.py
+  python3 scripts/upstream_previous_ids_check.py
+)
+)
+
 step "ci.yml / browser: Lock sources and agreement across workspaces (test, then check)"
 (
   gh_step ci.yml.browser

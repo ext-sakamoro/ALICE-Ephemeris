@@ -16,6 +16,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - Law 識別子 8 本 (`tdb-spice-et` / `tdb-fb1990` / `julian-date` / `teme-itrs-gmst82` / `iau2006-2000a-cio` / `earth-epv00` / `moon98` / `sun-moon-horizon`) は `alice-det-math` 全体の識別子でなく、この crate が呼ぶ 8 関数の識別子 (`law::DET_MATH_FUNCTIONS` / `DET_MATH_PINS`) を畳む 基準の格子の出力の digest は全部不変 前の値は `law::PREVIOUS_SEMANTICS_IDS` に残し、`law::names_law` が両方を読む 呼ばない関数が動いても識別子は動かず、呼ぶ関数が動けば compile が止まる `alice-det-math` は rev から `branch = "main"` + version 0.6 に
 
 ### Added
+- CI: 他の crate の `PREVIOUS_*_SEMANTICS_IDS` は一覧全体としてだけ使える (`contains` / `len` / `is_empty`、全体を回す iterator や for、引数として丸ごと渡す) とし、添字・slice のパターン・`.first` / `next` / `take` などを拒む `scripts/upstream_previous_ids_check.py` と試験を足した (ALICE-Edge と同じ中身の共有 file) 上流は major で一覧を空にする 走査した .rs が 0 件なら失敗 (ci.yml と preflight)
 - CI と preflight: 共有の `scripts/lock_sources_check.py` と試験 (ALICE-Edge と同じ bytes) を持つ 追跡している全ての Cargo.lock が alice-* を git から取り、lock の間で同じ source を引くかを見る (fuzz / tools の lock だけが古い commit に残るのを止める、lock が 1 本も読めなければ失敗)
 
 - `star_table`: Bright Star Catalog の等級 6.0 までの 5080 星 (`BRIGHTEST`、`STAR_COUNT`) と `stars`: 地平座標への変換

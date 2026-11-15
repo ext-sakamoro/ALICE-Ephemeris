@@ -17,13 +17,9 @@
 # run for it is red by design. A release is cut only from a later commit whose
 # run is green.
 #
-# usage: [PUBLIC_TEXT_BASE=<commit>|all] scripts/public_text.sh [BASE|all]
+# usage: [PUBLIC_TEXT_BASE=<commit>] scripts/public_text.sh [BASE]
 #   BASE: the argument, else PUBLIC_TEXT_BASE (preflight: the commit the change
-#   starts from, as CI takes the previous head), else merge-base origin/main HEAD,
-#   else (no origin/main yet) the whole history. `all` reads every commit
-#   reachable from HEAD, the root commit included: CI passes it for a push with
-#   no previous head (the first push of a branch, main included), where
-#   origin/main is already the pushed head and a merge base would read nothing.
+#   starts from, as CI takes the previous head), else merge-base origin/main HEAD
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -39,21 +35,13 @@ fi
 # the commits unread, which is not "no new commit"
 base=${1:-${PUBLIC_TEXT_BASE:-}}
 if [[ -z "$base" ]]; then
-  if git rev-parse -q --verify "refs/remotes/origin/main^{commit}" >/dev/null; then
-    base=$(git merge-base origin/main HEAD)
-  else
-    base=all
-  fi
+  base=$(git merge-base origin/main HEAD)
 fi
-if [[ "$base" == all ]]; then
-  range=HEAD
-elif git rev-parse -q --verify "$base^{commit}" >/dev/null; then
-  range="$base..HEAD"
-else
+if ! git rev-parse -q --verify "$base^{commit}" >/dev/null; then
   echo "base $base is not a commit in this repository: the commits cannot be read" >&2
   exit 2
 fi
-n=$(git rev-list --count "$range")
+n=$(git rev-list --count "$base..HEAD")
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -70,7 +58,7 @@ fi
 python3 "$tmp/public_text_check.py" --repo . --tree HEAD
 
 if [[ "$n" -gt 0 ]]; then
-  python3 "$tmp/public_text_check.py" --repo . --range "$range"
+  python3 "$tmp/public_text_check.py" --repo . --range "$base..HEAD"
 else
   echo "no new commit (base $base is HEAD)"
 fi

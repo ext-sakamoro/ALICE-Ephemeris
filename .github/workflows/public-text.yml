@@ -29,12 +29,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
       # 3.14: the checker reads zstd streams with the standard library
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.14'
       - name: Tests of scripts/public_text.sh (no network)
@@ -44,14 +44,15 @@ jobs:
           BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          # an event with no previous head (the first of a branch, main
-          # included) reads the whole history: origin/main is already the
-          # new head there, so a merge base would read no commit
-          base=all
+          # the checkout (fetch-depth: 0) fetched every branch of the remote into refs/remotes/origin/*, so a push
+          # with no previous head reads only the commits it publishes (scripts/public_text.sh new); when the remote
+          # has no other branch the script lists the public remote's heads itself (no credentials needed)
+          base=""
           if [ -n "${PR_BASE:-}" ]; then
             base="$PR_BASE"
-          elif [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
-               && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+          elif [ "${BEFORE:-}" = "0000000000000000000000000000000000000000" ]; then
+            base=new
+          elif [ -n "${BEFORE:-}" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             base="$BEFORE"
           fi
-          scripts/public_text.sh "$base"
+          if [ -n "$base" ]; then scripts/public_text.sh "$base"; else scripts/public_text.sh; fi

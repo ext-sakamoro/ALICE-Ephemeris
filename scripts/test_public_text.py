@@ -88,6 +88,9 @@ LINK = "[" * 2 + "x_y" + "]" * 2
 # SHA-256: the script must fetch the revision the pin names, not a branch
 EARLIER_PIN = ("rev 779fa443f95bc0caca5ca2d5bdb9156051fd6143\n"
                "sha256 e439fdd7495e45486b67d57d227f828426b703c0224b8a00d2e8a1c2f1e66594\n")
+# the first ALICE-Law revision whose checker reads --new-since (what `new` asks of it)
+NEW_SINCE_PIN = ("rev a5824065c35f161c07d5a158f21198fb198494ee\n"
+                 "sha256 8ee9743011aaae3d684d6ea5b95fd6ae84fd55918f3ccf9881f006469130ef36\n")
 
 
 def plant_repo(source: Path, r: Path, settings: bool) -> None:
@@ -152,21 +155,6 @@ class Planted(unittest.TestCase):
         self.assertIn(f"commit {head[:12]} message:1:", p.stdout)
         self.assertIn("1 findings in 1 commits", p.stdout)
 
-    def test_all_reads_the_root_commit(self) -> None:
-        # a base commit is outside its range, so only `all` can read the first commit
-        self.commit(f"see {LINK} for the reason")
-        root = git("rev-parse", "HEAD", cwd=self.r)
-        (self.r / "README.md").write_text("A clean file, changed.\n")
-        self.commit("a clean message")
-        for args in (["all"], []):
-            with self.subTest(args=args):
-                # no base and no origin/main: the whole history
-                p = subprocess.run(["bash", "scripts/public_text.sh", *args], cwd=self.r, capture_output=True,
-                                   text=True, env=self.env, timeout=300)
-                self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
-                self.assertIn(f"commit {root[:12]} message:1:", p.stdout)
-                self.assertIn("1 findings in 2 commits", p.stdout)
-
     def test_a_clean_commit_range_is_clean(self) -> None:
         self.commit("base")
         (self.r / "README.md").write_text("A clean file, changed.\n")
@@ -189,6 +177,30 @@ class Planted(unittest.TestCase):
         self.assertRegex(p.stderr, r"public_text_check\.py at [0-9a-f]{40} has sha256 [0-9a-f]{64}, "
                                    r"\.github/public-text-pin says 0{64}")
         self.assertNotIn("findings", p.stdout)
+
+    def run_new(self, pin: str) -> subprocess.CompletedProcess:
+        """`new` on a branch with one commit of its own beyond a fetched remote ref, at `pin`"""
+        (self.r / ".github" / "public-text-pin").write_text(pin)
+        self.commit("base")
+        git("update-ref", "refs/remotes/origin/main", "HEAD", cwd=self.r)
+        (self.r / "f.txt").write_text("f\n")
+        self.commit("feature")
+        env = dict(self.env, PUBLIC_TEXT_BRANCH="feature")
+        return subprocess.run(["bash", "scripts/public_text.sh", "new"], cwd=self.r, capture_output=True, text=True,
+                              env=env, timeout=300)
+
+    def test_new_with_a_pin_before_new_since_names_the_pin_move(self) -> None:
+        # the pinned checker has no --new-since: not an argparse error, but the revision the pin must move to
+        p = self.run_new(EARLIER_PIN)
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("has no --new-since", p.stderr)
+        self.assertIn("move .github/public-text-pin to ALICE-Law a5824065c35f161c07d5a158f21198fb198494ee", p.stderr)
+        self.assertNotIn("usage:", p.stderr)
+
+    def test_new_with_a_pin_that_has_new_since_reads_its_commit(self) -> None:
+        p = self.run_new(NEW_SINCE_PIN)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertRegex(p.stdout, r"in 1 commits")
 
     def test_the_named_revision_is_fetched(self) -> None:
         (self.r / ".github" / "public-text-pin").write_text(EARLIER_PIN)
@@ -254,6 +266,74 @@ class SettingsApproval(unittest.TestCase):
         p = self.check()
         self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
         self.assertIn("config-sha256 does not match .public-text.toml", p.stdout)
+
+
+class NewSince(unittest.TestCase):
+    """`new`: the commits a push with no previous head newly publishes (HEAD less every other fetched remote
+    branch), read without network through `--plan`: a branch from main with one commit of its own reads that
+    one commit and not main's history; a repository's first push (no other branch on the remote) reads every
+    commit, the root included; a remote with other branches none of which was fetched exits 2; the pushed
+    branch's own remote ref is not one of the others"""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="public-text-new-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "GITHUB_REF_NAME"}
+        self.env["GIT_CONFIG_NOSYSTEM"] = "1"
+        self.env["GIT_CONFIG_GLOBAL"] = os.devnull
+        self.env["HOME"] = str(self.tmp)
+        self.remote = self.tmp / "remote.git"
+        git("init", "-q", "--bare", "-b", "main", str(self.remote), cwd=self.tmp)
+        self.r = self.tmp / "r"
+        git("init", "-q", "-b", "main", str(self.r), cwd=self.tmp)
+        (self.r / "scripts").mkdir()
+        (self.r / ".github").mkdir()
+        shutil.copy(SCRIPT, self.r / "scripts" / "public_text.sh")
+        (self.r / ".github" / "public-text-pin").write_text(GOOD_PIN)
+        git("remote", "add", "origin", str(self.remote), cwd=self.r)
+        for i in range(3):
+            (self.r / f"m{i}.txt").write_text(f"{i}\n")
+            git("add", "-A", cwd=self.r)
+            git("commit", "-qm", f"main {i}", cwd=self.r)
+
+    def plan(self, branch: str) -> subprocess.CompletedProcess:
+        env = dict(self.env, PUBLIC_TEXT_BRANCH=branch)
+        return subprocess.run(["bash", "scripts/public_text.sh", "new", "--plan"], cwd=self.r, capture_output=True,
+                              text=True, env=env, timeout=60)
+
+    def test_a_branch_from_main_reads_only_its_own_commit(self) -> None:
+        git("push", "-q", "origin", "main", cwd=self.r)
+        git("fetch", "-q", "origin", cwd=self.r)
+        git("checkout", "-qb", "feature", cwd=self.r)
+        (self.r / "f.txt").write_text("f\n")
+        git("add", "-A", cwd=self.r)
+        git("commit", "-qm", "feature 1", cwd=self.r)
+        # pushed: the branch's own remote ref is HEAD, and is not one of the others
+        git("push", "-q", "origin", "feature", cwd=self.r)
+        git("fetch", "-q", "origin", cwd=self.r)
+        p = self.plan("feature")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("plan: new since 1 ref(s), 1 commit(s)", p.stdout)
+        self.assertIn("plan: not refs/remotes/origin/main", p.stdout)
+        self.assertNotIn("refs/remotes/origin/feature", p.stdout)
+
+    def test_the_first_push_of_a_repository_reads_every_commit_root_included(self) -> None:
+        git("push", "-q", "origin", "main", cwd=self.r)
+        git("fetch", "-q", "origin", cwd=self.r)
+        p = self.plan("main")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("plan: new since 0 ref(s), 3 commit(s)", p.stdout)
+
+    def test_other_branches_not_fetched_exit_2(self) -> None:
+        git("push", "-q", "origin", "main", cwd=self.r)
+        git("checkout", "-qb", "feature", cwd=self.r)
+        git("push", "-q", "origin", "feature", cwd=self.r)
+        # nothing fetched: the remote has main, the clone has no remote ref of it
+        for ref in git("for-each-ref", "--format=%(refname)", "refs/remotes", cwd=self.r).split():
+            git("update-ref", "-d", ref, cwd=self.r)
+        p = self.plan("feature")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("none was fetched", p.stderr)
 
 
 if __name__ == "__main__":

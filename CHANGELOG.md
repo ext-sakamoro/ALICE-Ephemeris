@@ -7,6 +7,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- CI: 共有の `.github/workflows/eol.yml` と `scripts/test_check_eol.py` を他の ALICE crate と同じ中身にした (action の pin を checkout v7.0.1 / setup-python v7.0.0 に、試験の git は system と global の設定を読まず branch を main で作る)
 - browser build: `det_math_semantics_id` (alice-det-math 全体の識別子の pointer) を外し、`law_count` と `law_semantics_id(i)` (`law::ALL` の i 番目の Law の識別子、範囲外は null) を export する node の runner は 12 本の Law の識別子を log に出し、件数 0 か範囲外が null でなければ fail 各 Law の識別子は呼ぶ関数の識別子を畳むので、どの算術で計算したかは Law の識別子で分かる `alice-det-math` は `#[path]` で取り込む `tests/law_ids.rs` が使い、`src/lib.rs` に `use alice_det_math as _;` と理由を書いて依存を見える形にした
 - CI: wasm32 の job の wasmtime を v49.0.2 に固定し、配布物を SHA-256 (a4d6e9e3…、release の digest と手元の再計算で一致) で照合して retry 付きで取り、binary を cache する 配布元が落ち続けた時は同じ版の wasmtime-cli を crates.io から `cargo install --locked` で作る `wasmtime --version` が動かなければ fail (setup action は latest を選び、配布元の HTTP 504 で他の repository の job が落ちた)
 

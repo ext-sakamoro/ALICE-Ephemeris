@@ -36,6 +36,9 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "std")]
+extern crate std;
+
 mod calendar;
 pub mod eop;
 mod error;
@@ -52,6 +55,7 @@ pub mod stars;
 pub mod sunmoon;
 mod sunmoon_table;
 pub mod tdb;
+pub mod time;
 mod tt;
 mod utc;
 

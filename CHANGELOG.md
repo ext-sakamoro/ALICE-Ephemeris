@@ -7,6 +7,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `time` module: `Timestamp` (POSIX time、1970-01-01T00:00:00Z からの i64 秒 + ns、範囲は −262143 年から 262142 年) unix の秒と ms は切り捨て (`from_unix_millis` / `unix_millis` / `unix_seconds`)、`plus_days` は範囲の端で止まる、`whole_seconds_since` / `whole_days_since` は 0 方向に丸める 文字の形は RFC 3339 の `Z` (`rfc3339_z`) と `+00:00` (`rfc3339`)、`YYYY-MM-DD HH:MM:SS UTC` (`Display`)、`YYYYMMDDTHHMMSSZ` (`compact`) で、端数は ns を保つ 0 / 3 / 6 / 9 桁の最短 `parse_rfc3339` / `FromStr` は `Z` / `z` / `UTC` / `±HH:MM` を読み、存在しない日付・秒 60・範囲外を断る 暦は `calendar` の `civil_from_mjd` / `mjd_from_civil` を使い、全部 `core` で割り当てなし `std` で `from_system_time` (この crate は時計を読まない)、新しい optional feature `serde` で `Z` の文字列として serialize / deserialize 試験: `tests/unix_time_forms.rs` (固定の時刻の文字の形・読める形と断る形・ms と秒の切り捨て・範囲の端・日数の加算・秒差と日数差、期待値は広く使われている Rust の日時の library の出力を literal にしたもの) と module の単体試験
 - sky module: `stars_table_written_brightest(n)` が `sky/stars_bright.bin` (`sky/stars.bin` の明るい方から n 星、同じ列ごとの配置で各列 n 個、n × 14 byte) を受け取る 1 ≦ n < `stars_len` だけを受け取り、その n 星の出力は全体の表と bit で同じ、残りは NaN 全体の表は `stars_table_written` のまま (全体の出力の digest は不変) 明るい星の表は全体の表として受け取らない page は全体の表が届く前に明るい星だけ描ける `sky/stars_bright.bin` は等級 3.5 以下の 287 星 (4,018 byte、brotli 2,834 byte)、`scripts/gen_star_bright.py` が `sky/stars.bin` から書く 試験: `sky/tests/bright.rs` (24 入力で bit 一致、範囲外の n を拒否、0 で埋めた上に書いて全体の表の残りに頼らない)、`scripts/test_gen_star_table.py` (先頭 n 列 = 先頭 n 行の `binary`、commit した file が生成と同じ)、`scripts/run_sky_wasm.mjs` (wasm でも同じ bit、export の一覧に追加)
 
 ### Changed

@@ -53,6 +53,14 @@ assert_eq!(tdb.to_tt(TdbModel::Fb1990)?, tt);
   Defined from **1960-01-01T00:00:00 UTC** up to, not including, the
   leap-second table's expiry, **2027-06-28T00:00:00 UTC**. Before 1960 every
   conversion returns `TimeError::BeforeUtc`.
+- A `time::Timestamp` is POSIX time (every day 86,400 s, no leap seconds):
+  `i64` seconds since 1970-01-01T00:00:00Z plus nanoseconds, for the years
+  −262143 to 262142. Unix second and millisecond counts round down; whole
+  second and day differences round toward zero; adding days holds at the
+  range ends. Its text forms (RFC 3339 with `Z` or `+00:00`, a
+  `YYYY-MM-DD HH:MM:SS UTC` display, `YYYYMMDDTHHMMSSZ`) write the fewest of
+  0, 3, 6 or 9 fraction digits and need no allocation. `std` adds
+  `from_system_time`; the optional `serde` feature serializes the `Z` text.
 - TDB − TT is evaluated in `f64`. `TdbModel::SpiceEt` evaluates for any
   instant; `TdbModel::Fb1990` is defined within ±110,000 Julian years of
   J2000 TT (`tdb::FB1990_DOMAIN_MILLENNIA`), where |TDB − TT| ≤ 0.920 s is

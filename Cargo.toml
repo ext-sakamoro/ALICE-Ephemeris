@@ -18,17 +18,22 @@ exclude = ["/.github", "/scripts", "/deny.toml", "/browser"]
 [dependencies]
 # every f64 transcendental goes through alice-det-math (bit-identical on all targets)
 alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", branch = "main", version = "0.6", default-features = false }
+serde = { version = "1", default-features = false, optional = true }
 
 [features]
 default = ["std"]
 # `std`: alice-det-math's hardware sqrt (IEEE correctly rounded, so the results
 # are bit-identical without it). This crate itself uses only `core`.
 std = ["alice-det-math/std"]
+# `serde`: `time::Timestamp` as its RFC 3339 `Z` text (no allocation)
+serde = ["dep:serde"]
 
 [dev-dependencies]
 # the Law identifier checks' hashing (browser/src/law_digest.rs), shared with the browser build
 alice-ephemeris-browser = { path = "browser" }
 sha1 = { version = "0.10", default-features = false }
+# the serde form of time::Timestamp, read back as a JSON string
+serde_json = "1"
 
 [lints.rust]
 unsafe_code = "forbid"

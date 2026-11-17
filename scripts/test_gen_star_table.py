@@ -121,6 +121,39 @@ class Table(unittest.TestCase):
         with self.assertRaises(ValueError):
             g.read_binary(b"\0" * 27, 2)
 
+    def test_the_brightest_of_a_file_are_what_binary_writes_for_their_rows(self):
+        # five stars, brightest first: the first n of each column are the file binary writes for the first n rows
+        rows_ = [g.star(row(k, ra=f"{10 * k}.5", dec=f"-{k}.25", pmra=f"0.{k}", pmdec="-0.2", vmag=f"{k - 1}.5"))
+                 for k in range(1, 6)]
+        full = g.binary(rows_)
+        compared = 0
+        for n in range(1, 5):
+            self.assertEqual(g.brightest_of(full, 5, n), g.binary(rows_[:n]), n)
+            compared += 1
+        self.assertEqual(compared, 4)
+        # n of none, of all and of more, and a file of the wrong length, are refused
+        for n in (0, 5, 6):
+            with self.assertRaises(ValueError):
+                g.brightest_of(full, 5, n)
+        with self.assertRaises(ValueError):
+            g.brightest_of(full[:-1], 5, 2)
+        # how many are no fainter than a magnitude: 0.5, 1.5, 2.5 are at most 2.5; a file not brightest first stops
+        self.assertEqual(g.bright_count(full, 5, 2.5), 3)
+        with self.assertRaises(ValueError):
+            g.bright_count(g.binary(rows_[::-1]), 5, 2.5)
+
+    def test_the_committed_bright_table_is_the_brightest_of_the_committed_table(self):
+        sky = Path(__file__).resolve().parent.parent / "sky"
+        full, bright = (sky / "stars.bin").read_bytes(), (sky / "stars_bright.bin").read_bytes()
+        count = len(full) // 14
+        n = g.bright_count(full, count, 3.5)
+        self.assertEqual(len(bright), n * 14)
+        self.assertEqual(bright, g.brightest_of(full, count, n))
+        # the next star is fainter than the cut
+        mags = [m / 100 for m in __import__("struct").unpack_from(f"<{count}h", full, 12 * count)]
+        self.assertLessEqual(mags[n - 1], 3.5)
+        self.assertGreater(mags[n], 3.5)
+
 
 if __name__ == "__main__":
     unittest.main()

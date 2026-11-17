@@ -143,6 +143,28 @@ def read_binary(data, count):
     return [(cols[0][i], cols[1][i], cols[2][i], cols[3][i], mags[i]) for i in range(count)]
 
 
+def brightest_of(data, count, n):
+    """The first `n` stars of a compact file of `count` (the brightest, the file being brightest first), in the same
+    layout with each column `n` long: what `binary` writes for those `n` rows"""
+    if len(data) != count * 14:
+        raise ValueError(f"{len(data)} bytes are not {count} stars of 14")
+    if not 1 <= n < count:
+        raise ValueError(f"{n} is not between 1 and {count - 1}")
+    at, out = 0, []
+    for size in (4, 4, 2, 2, 2):
+        out.append(data[at:at + size * n])
+        at += size * count
+    return b"".join(out)
+
+
+def bright_count(data, count, max_mag):
+    """How many stars of a compact file are at most `max_mag` (they come first)"""
+    mags = struct.unpack_from(f"<{count}h", data, 12 * count)
+    if any(a > b for a, b in zip(mags, mags[1:])):
+        raise ValueError("the stars are not brightest first")
+    return sum(1 for m in mags if m <= round(max_mag * 100))
+
+
 def main(argv):
     if len(argv) != 5:
         print(__doc__, file=sys.stderr)

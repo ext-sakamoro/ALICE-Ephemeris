@@ -1,8 +1,10 @@
 // node scripts/run_sky_wasm.mjs <sky.wasm> <expected.txt>
 // The page's module, checked as a page uses it: it exports only `sun_alt_az`, `moon_alt_az_lit`,
-// `stars_alt_az_mag`, `stars_len`, `stars_table`, `stars_table_written` and `memory`; over the
+// `stars_alt_az_mag`, `stars_len`, `stars_table`, `stars_table_written`, `stars_table_written_brightest` and
+// `memory`; over the
 // inputs in expected.txt it gives the outputs whose sha256 the native test pinned there (0 inputs
-// fail); at the 2026 March equinox the Sun is overhead at the subsolar point and below the
+// fail), and with the bright stars' table (sky/stars_bright.bin) the same bits for those stars and NaN past them;
+// at the 2026 March equinox the Sun is overhead at the subsolar point and below the
 // antipode's horizon; what is not a time or a place gives NaN.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -14,7 +16,7 @@ const ex = instance.exports;
 const problems = [];
 
 const names = Object.keys(ex).sort();
-if (names.join(',') !== 'memory,moon_alt_az_lit,stars_alt_az_mag,stars_len,stars_table,stars_table_written,sun_alt_az') problems.push(`exports: ${names.join(', ')}`);
+if (names.join(',') !== 'memory,moon_alt_az_lit,stars_alt_az_mag,stars_len,stars_table,stars_table_written,stars_table_written_brightest,sun_alt_az') problems.push(`exports: ${names.join(', ')}`);
 
 const sun = (ms, lat, lon) => Array.from(new Float64Array(ex.memory.buffer, ex.sun_alt_az(ms, lat, lon), 2));
 
@@ -53,6 +55,31 @@ if (gotStars !== starsPinned) problems.push(`stars outputs ${gotStars} != pinned
 const gotMoon = hm.digest('hex');
 if (gotMoon !== moonPinned) problems.push(`moon outputs ${gotMoon} != pinned ${moonPinned}`);
 console.log(`${got === pinned && gotMoon === moonPinned && gotStars === starsPinned && n > 0 ? 'ok  ' : 'FAIL'} native bits over ${n} inputs, stars, Sun and Moon`);
+
+// the bright stars' table, over zeros: the whole table's bits for its stars, NaN past them, never taken as whole
+{
+  const bright = fs.readFileSync(new URL('../sky/stars_bright.bin', import.meta.url));
+  const k = bright.length / 14;
+  const at = fs.readFileSync(expectedPath, 'utf8').split('\n').filter((l) => l.trim() && !l.startsWith('#') && !l.includes('sha256'))
+    .map((l) => l.trim().split(/\s+/).map(Number));
+  const whole = at.map(([ms, lat, lon]) => Buffer.from(new Float64Array(stars(ms, lat, lon)).buffer));
+  new Uint8Array(ex.memory.buffer, ex.stars_table(), table.length).fill(0);
+  new Uint8Array(ex.memory.buffer, ex.stars_table(), bright.length).set(bright);
+  if (ex.stars_table_written(bright.length) !== 0) problems.push('the bright table was taken as the whole one');
+  if (ex.stars_table_written_brightest(0) !== 0 || ex.stars_table_written_brightest(ex.stars_len()) !== 0) problems.push('a bright count of none or of all was taken');
+  let compared = 0, ok = Number.isInteger(k) && k > 0 && k < ex.stars_len() && ex.stars_table_written_brightest(k) === 1;
+  at.forEach(([ms, lat, lon], i) => {
+    const got = Buffer.from(new Float64Array(stars(ms, lat, lon)).buffer);
+    if (!got.subarray(0, k * 24).equals(whole[i].subarray(0, k * 24))) ok = false;
+    if (!Array.from(new Float64Array(got.buffer, got.byteOffset + k * 24, (ex.stars_len() - k) * 3)).every(Number.isNaN)) ok = false;
+    compared += k * 3;
+  });
+  if (compared === 0) ok = false;
+  if (!ok) problems.push('the bright table did not give the whole table\'s bits for its stars');
+  console.log(`${ok ? 'ok  ' : 'FAIL'} bright stars: ${k} stars, ${compared} values the same bits as the whole table's`);
+  new Uint8Array(ex.memory.buffer, ex.stars_table(), table.length).set(table);
+  if (ex.stars_table_written(table.length) !== 1) problems.push('the whole table was refused after the bright one');
+}
 
 if (!Number.isNaN(moon(4133980800000, 0, 0)[0])) problems.push('the Moon past its range gave a number');
 if (Number.isNaN(sun(4133980800000, 0, 0)[0])) problems.push('the Sun past the Moon\'s range gave NaN');

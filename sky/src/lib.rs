@@ -104,8 +104,9 @@ const STARS: usize = alice_ephemeris::star_table::STAR_COUNT;
 const STAR_BYTES: usize = 14;
 /// Where the page writes `sky/stars.bin`.
 static mut STAR_TABLE: [u8; STARS * STAR_BYTES] = [0; STARS * STAR_BYTES];
-/// Whether [`stars_table_written`] has been told a whole table is there.
-static mut STAR_TABLE_READY: bool = false;
+/// How many stars the written table holds: [`STARS`] after [`stars_table_written`] took a whole table, `n` after
+/// [`stars_table_written_brightest`] took the `n` brightest, 0 when no table has been taken.
+static mut STAR_TABLE_STARS: usize = 0;
 
 /// Where to write `sky/stars.bin`, [`stars_len`] times 14 bytes, before [`stars_table_written`].
 #[no_mangle]
@@ -118,25 +119,44 @@ pub extern "C" fn stars_table() -> *mut u8 {
 #[no_mangle]
 pub extern "C" fn stars_table_written(bytes: u32) -> u32 {
     let whole = bytes as usize == STARS * STAR_BYTES;
-    // a wasm32 page runs this on one thread; nothing else holds the flag
-    unsafe { core::ptr::addr_of_mut!(STAR_TABLE_READY).write(whole) };
+    // a wasm32 page runs this on one thread; nothing else holds the count
+    unsafe { core::ptr::addr_of_mut!(STAR_TABLE_STARS).write(if whole { STARS } else { 0 }) };
     u32::from(whole)
+}
+
+/// Say that the table written at [`stars_table`] is of the `n` brightest stars only (`sky/stars_bright.bin`: the
+/// first `n` of each column of `sky/stars.bin`, in the same layout, each column `n` long, `n * 14` bytes), so a page
+/// can draw the bright stars before the whole table comes. 1 when `1 <= n < `[`stars_len`] (a whole table is
+/// [`stars_table_written`]'s), 0 if not, and then [`stars_alt_az_mag`] gives NaN. Its output is the whole table's
+/// for those `n` stars, and NaN for the rest.
+#[no_mangle]
+pub extern "C" fn stars_table_written_brightest(n: u32) -> u32 {
+    let n = n as usize;
+    let taken = (1..STARS).contains(&n);
+    // a wasm32 page runs this on one thread; nothing else holds the count
+    unsafe { core::ptr::addr_of_mut!(STAR_TABLE_STARS).write(if taken { n } else { 0 }) };
+    u32::from(taken)
 }
 
 /// A degree and an arcsecond in radians, as the generator takes them (`math.pi / 180`, `math.pi / 180 / 3600`)
 const DEG: f64 = core::f64::consts::PI / 180.0;
 const ARCSEC: f64 = core::f64::consts::PI / 180.0 / 3600.0;
 
-fn star_in_table(table: &[u8; STARS * STAR_BYTES], i: usize) -> alice_ephemeris::stars::Star {
+/// Star `i` of a table whose columns are `count` long (the whole table's are [`STARS`])
+fn star_in_table(
+    table: &[u8; STARS * STAR_BYTES],
+    count: usize,
+    i: usize,
+) -> alice_ephemeris::stars::Star {
     // column starts: ra, dec (4 bytes a star), then pm_ra, pm_dec, mag (2 bytes a star)
     let i32_at = |col: usize| {
-        let at = col * 4 * STARS + i * 4;
+        let at = col * 4 * count + i * 4;
         let mut b = [0u8; 4];
         b.copy_from_slice(&table[at..at + 4]);
         f64::from(i32::from_le_bytes(b))
     };
     let i16_at = |col: usize| {
-        let at = 8 * STARS + col * 2 * STARS + i * 2;
+        let at = 8 * count + col * 2 * count + i * 2;
         f64::from(i16::from_le_bytes([table[at], table[at + 1]]))
     };
     // each a whole number of the catalogue's last decimal: divided by its scale (exact operands, one rounding) it is
@@ -156,7 +176,8 @@ static mut STARS_ALT_AZ_MAG: [f64; STARS * 3] = [0.0; STARS * 3];
 /// Each star's altitude and azimuth (radians, azimuth from north through east) and magnitude, three
 /// `f64` per star, brightest first, at the returned pointer: as [`sun_alt_az`] for the clock and the
 /// place (UT1 taken as UTC, no pole), all NaN when it would give NaN. Below the horizon its altitude
-/// is negative: which to draw is the page's. All NaN until a whole table has been written.
+/// is negative: which to draw is the page's. All NaN until a table has been taken; after the `n` brightest only
+/// ([`stars_table_written_brightest`]), the stars past `n` are NaN.
 #[no_mangle]
 pub extern "C" fn stars_alt_az_mag(
     unix_ms: f64,
@@ -164,9 +185,9 @@ pub extern "C" fn stars_alt_az_mag(
     longitude_deg: f64,
 ) -> *const f64 {
     const DEG: f64 = core::f64::consts::PI / 180.0;
-    // a wasm32 page runs this on one thread; nothing else holds the flag
-    let ready = unsafe { core::ptr::addr_of!(STAR_TABLE_READY).read() };
-    let valid = ready && valid_time_and_place(unix_ms, latitude_deg, longitude_deg);
+    // a wasm32 page runs this on one thread; nothing else holds the count
+    let count = unsafe { core::ptr::addr_of!(STAR_TABLE_STARS).read() };
+    let valid = count > 0 && valid_time_and_place(unix_ms, latitude_deg, longitude_deg);
     let site = Site {
         latitude: latitude_deg * DEG,
         longitude: longitude_deg * DEG,
@@ -177,15 +198,19 @@ pub extern "C" fn stars_alt_az_mag(
         if let Ok((tt, ut1)) = alice_ephemeris::horizon::tt_ut1_at_unix_ms(unix_ms as i64) {
             // a wasm32 page runs this on one thread; the table is written before this is called
             let table = unsafe { &*core::ptr::addr_of!(STAR_TABLE) };
-            let stars = [(); STARS].map({
-                let mut i = 0;
-                move |()| {
-                    i += 1;
-                    star_in_table(table, i - 1)
-                }
-            });
+            let mut stars = [alice_ephemeris::stars::Star {
+                ra: 0.0,
+                dec: 0.0,
+                pm_ra: 0.0,
+                pm_dec: 0.0,
+                mag: 0.0,
+            }; STARS];
+            for (i, s) in stars.iter_mut().enumerate().take(count) {
+                *s = star_in_table(table, count, i);
+            }
+            let stars = &stars[..count];
             for (slot, (h, s)) in out.chunks_exact_mut(3).zip(
-                alice_ephemeris::stars::stars_in_sky(&stars, tt, ut1, 0.0, 0.0, &site).zip(&stars),
+                alice_ephemeris::stars::stars_in_sky(stars, tt, ut1, 0.0, 0.0, &site).zip(stars),
             ) {
                 slot[0] = h.altitude;
                 slot[1] = h.azimuth;

@@ -6,6 +6,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- sky module: `stars_table_written_brightest(n)` が `sky/stars_bright.bin` (`sky/stars.bin` の明るい方から n 星、同じ列ごとの配置で各列 n 個、n × 14 byte) を受け取る 1 ≦ n < `stars_len` だけを受け取り、その n 星の出力は全体の表と bit で同じ、残りは NaN 全体の表は `stars_table_written` のまま (全体の出力の digest は不変) 明るい星の表は全体の表として受け取らない page は全体の表が届く前に明るい星だけ描ける `sky/stars_bright.bin` は等級 3.5 以下の 287 星 (4,018 byte、brotli 2,834 byte)、`scripts/gen_star_bright.py` が `sky/stars.bin` から書く 試験: `sky/tests/bright.rs` (24 入力で bit 一致、範囲外の n を拒否、0 で埋めた上に書いて全体の表の残りに頼らない)、`scripts/test_gen_star_table.py` (先頭 n 列 = 先頭 n 行の `binary`、commit した file が生成と同じ)、`scripts/run_sky_wasm.mjs` (wasm でも同じ bit、export の一覧に追加)
+
 ### Changed
 - CI: 公開文の検査 (`.github/workflows/public-text.yml` / `scripts/public_text.sh` / `scripts/test_public_text.py`) を ALICE-Law の計画どおりの中身に移し、`.github/public-text-pin` を検査器の rev a5824065 (sha256 8ee97437…) に上げる 検査は merge commit と `--new-since` の範囲を読む
 - CI: 共有の `.github/workflows/eol.yml` と `scripts/test_check_eol.py` を他の ALICE crate と同じ中身にした (action の pin を checkout v7.0.1 / setup-python v7.0.0 に、試験の git は system と global の設定を読まず branch を main で作る)

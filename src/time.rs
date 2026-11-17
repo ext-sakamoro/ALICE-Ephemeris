@@ -549,22 +549,24 @@ mod tests {
     use super::*;
 
     // oracle: the type's definition (seconds rounded down, nanoseconds below 10⁹ also before 1970)
+    // Offsets are whole 100 ns steps: SystemTime on Windows counts in 100 ns, and a smaller offset
+    // is dropped there before it reaches the conversion
     #[cfg(feature = "std")]
     #[test]
     fn system_time_before_the_epoch_keeps_a_positive_fraction() {
         use std::time::{Duration, UNIX_EPOCH};
         let at = |s, n| Timestamp::from_unix(s, n).unwrap();
         assert_eq!(
-            Timestamp::from_system_time(UNIX_EPOCH - Duration::from_nanos(1)),
-            at(-1, 999_999_999)
+            Timestamp::from_system_time(UNIX_EPOCH - Duration::from_nanos(100)),
+            at(-1, 999_999_900)
         );
         assert_eq!(
             Timestamp::from_system_time(UNIX_EPOCH - Duration::from_secs(2)),
             at(-2, 0)
         );
         assert_eq!(
-            Timestamp::from_system_time(UNIX_EPOCH + Duration::new(1_700_000_000, 5)),
-            at(1_700_000_000, 5)
+            Timestamp::from_system_time(UNIX_EPOCH + Duration::new(1_700_000_000, 500)),
+            at(1_700_000_000, 500)
         );
     }
 

@@ -6,7 +6,7 @@
 # Run `--quick` before every push.
 #
 # usage: scripts/preflight.sh [--quick]   (--quick skips the test / bench suites)
-# generator rev 94ac16beb455be99e4675fe0648f996589e96bee
+# generator rev 37b834045d17a627624b94d26a852520f66fe725
 # local steps: scripts/preflight.local.sh 045135b5b7d0bf9e139903b699852ec18ae72e20
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -29,9 +29,29 @@ cd "$(dirname "$0")/.."
 # itself `alice-heavy-slot keeper slot=<k> holder=<pid> dirhex=<the dir's bytes in hex> end` (its process title,
 # which no file cleanup removes; the dir in hex so no dir can end the title early), and the holder of slot k is read
 # from there (only from a perl process, and only while the holder lives); `info.<k>` only adds the holder's label and tool, and a
-# release removes it only while it names the releasing shell. A wait past ALICE_HEAVY_SLOT_TIMEOUT seconds (default 7200 for land, 14400 for work) fails; the holder's own nested runs
+# release removes it only while it names the releasing shell. A wait whose place has not moved for ALICE_HEAVY_SLOT_STALL_SECS (default 10800) or past ALICE_HEAVY_SLOT_TIMEOUT in all (default 28800) fails; the holder's own nested runs
 # (ALICE_HEAVY_SLOT_HELD) run inside its slot.
 heavy_slot_dir() { printf '%s\n' "${ALICE_HEAVY_SLOT_DIR:-$HOME/.cache/alice-heavy-slot}"; }
+# Disk admission (disk_reserve.py) is on for every heavy and short take; no environment name turns it off. A test
+# turns it off for its own slot dir only, with a file `disk-admission-off` in that dir. A slot dir under the account's
+# home (from the password database, whatever HOME says) refuses the file: the machine's queue (.cache/alice-heavy-slot
+# there) and the Air's receipt queue (remote-receipts/slot there) always admit by disk; a test's dir is a temporary dir.
+# Prints nothing but a refusal; returns 0 = admission on, 1 = off (a test's dir), 2 = refused.
+heavy_slot_disk_admits() {
+  local d="$1" home
+  [ -e "$d/disk-admission-off" ] || return 0
+  home=$(perl -e 'print((getpwuid($<))[7])')
+  local real
+  real=$(cd "$d" 2>/dev/null && pwd -P) || real=$d
+  home=$(cd "$home" 2>/dev/null && pwd -P) || home=""
+  case "$real/" in
+    "$home"/*)
+      echo "heavy slot: $d/disk-admission-off is refused in a slot dir under the account's home (remove it; disk admission stays on)" >&2
+      return 2 ;;
+  esac
+  [ -n "$home" ] || { echo "heavy slot: the account's home is unknown; $d/disk-admission-off is refused" >&2; return 2; }
+  return 1
+}
 heavy_slot_count() {
   case "${ALICE_HEAVY_SLOTS:-2}" in
     [1-9] | 1[0-6]) printf '%s\n' "${ALICE_HEAVY_SLOTS:-2}" ;;
@@ -85,6 +105,7 @@ heavy_slot_holders() {
   local d=$1 k h f out=""
   while read -r k h; do
     f="$d/info.$k"
+    if [ "$(sed -n 1p "$d/info.short.0" 2>/dev/null)" = "$h" ]; then f="$d/info.short.0"; fi
     if [ "$(sed -n 1p "$f" 2>/dev/null)" = "$h" ]; then
       out="${out:+$out, }$(sed -n 3p "$f") pid $h ($(sed -n 4p "$f"))"
     else
@@ -95,10 +116,23 @@ heavy_slot_holders() {
 }
 heavy_slot_acquire() {
   local label=$1 tool=$2 class=${3:-${ALICE_HEAVY_SLOT_CLASS:-work}} pool=${4:-heavy} d n k f line err \
-    limit="${ALICE_HEAVY_SLOT_TIMEOUT:-}" age="${ALICE_HEAVY_SLOT_AGE_SECS:-9000}" queue=queue lock=lock. \
+    limit="${ALICE_HEAVY_SLOT_TIMEOUT:-}" stall="${ALICE_HEAVY_SLOT_STALL_SECS:-10800}" age="${ALICE_HEAVY_SLOT_AGE_SECS:-9000}" queue=queue lock=lock. \
     info=info. title=keeper
   case "$class" in land | work) ;; *) echo "heavy slot: the class must be land or work (got '$class')" >&2; return 2 ;; esac
-  if [ -z "$limit" ]; then if [ "$class" = land ]; then limit=7200; else limit=14400; fi; fi
+  # a waiter gives up when its place has not moved up for ALICE_HEAVY_SLOT_STALL_SECS (default 3 h: no holder finished
+  # in that time), or past ALICE_HEAVY_SLOT_TIMEOUT in all (default 8 h, far above the longest wait seen, 2.7 h on
+  # 2026-11-07); a run still moving up is never dropped for its total wait alone before that (a 2 h total limit dropped
+  # three that day). HEAVY_SLOT_WAIT_END says which (stalled / timeout) for the take record
+  if [ -z "$limit" ]; then limit=28800; fi
+  case "$stall" in '' | *[!0-9]*) echo "heavy slot: ALICE_HEAVY_SLOT_STALL_SECS must be a whole number of seconds" >&2; return 2 ;; esac
+  HEAVY_SLOT_WAIT_END=""
+  # HEAVY_SLOT_RESERVE_KEY (the caller's: repository, commit, label): a waiter restarted within
+  # ALICE_HEAVY_SLOT_RESERVE_SECS (default 1800) of its predecessor's death gets that place back
+  local rkey="" hold="${ALICE_HEAVY_SLOT_RESERVE_SECS:-1800}"
+  case "$hold" in '' | *[!0-9]*) echo "heavy slot: ALICE_HEAVY_SLOT_RESERVE_SECS must be a whole number of seconds" >&2; return 2 ;; esac
+  if [ -n "${HEAVY_SLOT_RESERVE_KEY:-}" ]; then
+    rkey=$(printf '%s|%s|%s' "$HEAVY_SLOT_RESERVE_KEY" "$pool" "$class" | shasum -a 256 2>/dev/null | cut -c1-40)
+  fi
   case "$age" in '' | *[!0-9]*) echo "heavy slot: ALICE_HEAVY_SLOT_AGE_SECS must be a whole number of seconds" >&2; return 2 ;; esac
   d=$(heavy_slot_dir)
   n=$(heavy_slot_count) || return 1
@@ -109,6 +143,19 @@ heavy_slot_acquire() {
     # one light slot; a light take inside a light holder runs inside it
     if [ -n "${ALICE_HEAVY_SLOT_LIGHT_HELD:-}" ] && kill -0 "$ALICE_HEAVY_SLOT_LIGHT_HELD" 2>/dev/null; then return 0; fi
     n=1 queue=queue-light lock=light. info=info-light. title=light-keeper
+  elif [ "$pool" = short ]; then
+    # one short slot, its own queue; a nested take (the preflight inside) adopts it through ALICE_HEAVY_SLOT_HELD above
+    n=1 queue=queue-short lock=short. info=info.short.
+  fi
+  # disk reservations (disk_reserve.py): heavy and short takes, unless a test's slot dir turns them off
+  local dscript="" dkey="${HEAVY_SLOT_DISK_KEY:-$label}" dadm=0
+  if [ "$pool" != light ]; then
+    heavy_slot_disk_admits "$d" || dadm=$?
+    [ "$dadm" = 2 ] && return 2
+  fi
+  if [ "$pool" != light ] && [ "$dadm" = 0 ]; then
+    dscript="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/disk_reserve.py"
+    [ -f "$dscript" ] || dscript=""
   fi
   if ! err=$(mkdir -p "$d/$queue" 2>&1); then
     echo "heavy slot: cannot create $d: ${err:-not writable}" >&2
@@ -121,9 +168,32 @@ heavy_slot_acquire() {
     fi
   done
   exec 8< <(exec perl -MFcntl=:flock -MTime::HiRes=time,sleep -e '
-    my ($dir, $n, $limit, $class, $age, $qname, $lock, $title, $label) = @ARGV; my $parent = getppid(); $| = 1;
+    my ($dir, $n, $limit, $stall, $class, $age, $qname, $lock, $title, $label, $rkey, $hold, $dscript, $dkey) = @ARGV;
+    # disk (disk_reserve.py admit): the head of the queue takes a slot only when the disk can hold its build next to
+    # what the running takes will still grow; asked at most every 5 s while first (it reads df and the small files
+    # of the trackers, no du), so a take that ends frees its reservation for the next one within seconds
+    my ($dok, $dlast, $dwhy) = (1, 0, "");
+    my $parent = getppid(); $| = 1;
     my $q = "$dir/$qname";
     my $stamp = sprintf("%017.6f", time);
+    # a waiter that died keeps its place for $hold s: a new waiter of the same key (repository, commit, label; the
+    # caller hashes it) whose previous waiter is gone takes the old arrival time, so it sorts where it stood
+    my $rdir = "$dir/reserve-$qname"; my $res = ""; my $touched = 0;
+    if (defined $rkey && $rkey =~ /^[0-9a-f]{40}$/) {
+      mkdir $rdir;
+      if (opendir(my $rd, $rdir)) {
+        for my $f (grep { /^[0-9a-f]{40}$/ } readdir $rd) { my $m = (stat("$rdir/$f"))[9]; unlink "$rdir/$f" if defined $m && time - $m > $hold + 60 }
+        closedir $rd;
+      }
+      $res = "$rdir/$rkey";
+      if (open(my $rf, "<", $res)) {
+        my ($s, $p) = split " ", (scalar(<$rf>) // ""); close $rf;
+        my $m = (stat($res))[9];
+        if (defined $s && $s =~ /^\d+\.\d+$/ && $p && $p =~ /^\d+$/ && !kill(0, $p) && defined $m && time - $m <= $hold) { $stamp = $s }
+      }
+      if (open(my $wf, ">", "$res.tmp")) { print $wf "$stamp $$\n"; close $wf; rename "$res.tmp", $res }
+      $touched = time;
+    }
     my %warned;
     my $name = sub {
       my $r;
@@ -146,27 +216,65 @@ heavy_slot_acquire() {
     };
     my $me = $name->();
     my $ticket = "$q/$me";
-    open(my $tf, ">", $ticket) or do { print "error $!\n"; exit 2 }; close $tf;
-    END { unlink $ticket if defined $ticket }
+    open(my $tf, ">", $ticket) or do { print "error $!\n"; exit 2 }; print $tf ($label // ""), "\n"; close $tf;
+    # a waiter the disk holds (its own admission failed) says so beside its ticket: `.disk-<ticket>`, the reason,
+    # refreshed at each ask; a waiter behind waiters that are all disk-held may take a free slot when its own
+    # admission passes (2026-11-10: a head reserving 30.8 GiB of 25.5 free held 5 fitting waiters for 3 h); the head
+    # keeps its place: it clears its marker as soon as the disk fits, and then nobody behind it may pass
+    my $mark = sub { "$q/.disk-$me" };
+    # the keeper of a ticket: its pid alive and that process started no later than the ticket file was written (+2 s:
+    # ps gives whole seconds; the keeper writes its ticket once, after it starts, and a rename keeps the time); a later
+    # process that took the pid of a dead keeper is not it. Not the time in the name: a restarted waiter writes its old
+    # time into a new ticket. A ticket gone meanwhile, or a start ps cannot give, falls back to the pid alone
+    my $keeper = sub {
+      my ($p, $t) = @_;
+      my $stamp = (stat("$q/$t"))[9];
+      return 1 unless defined $stamp;
+      my $et = `ps -o etime= -p $p 2>/dev/null`; $et =~ s/\s+//g;
+      return 1 if $et eq "";
+      my $days = ($et =~ s/^(\d+)-//) ? $1 : 0;
+      my $secs = 0; $secs = $secs * 60 + $_ for split /:/, $et;
+      return time - ($secs + $days * 86400) <= $stamp + 2;
+    };
+    my $clear = sub { unlink $mark->() };
+    END { unlink $ticket if defined $ticket; unlink "$q/.disk-$me" if defined $me }
     my @fh;
     for my $k (0 .. $n - 1) { open($fh[$k], ">>", "$dir/$lock$k") or do { print "error $!\n"; exit 2 } }
     print "pid $$\n";
-    my $start = time; my $note = 0;
+    my $start = time; my $note = 0; my $best; my $moved = time;
     while (1) {
       my $want = $name->();
-      if ($want ne $me && rename($ticket, "$q/$want")) { $me = $want; $ticket = "$q/$me" }
+      if ($want ne $me && rename($ticket, "$q/$want")) { $clear->(); $me = $want; $ticket = "$q/$me" }
       opendir(my $dh, $q) or do { print "error $!\n"; exit 2 };
       my @live;
-      for my $t (sort grep { /^\d/ } readdir $dh) {
+      my @names = readdir $dh;
+      for my $t (sort grep { /^\d/ } @names) {
         my ($p) = $t =~ /-(\d+)$/;
-        if ($p && ($p == $$ || kill(0, $p))) { push @live, $t } else { unlink "$q/$t" }
+        if ($p && ($p == $$ || (kill(0, $p) && $keeper->($p, $t)))) { push @live, $t } else { unlink "$q/$t" }
+      }
+      # a `.disk-<ticket>` marker whose ticket is gone (its keeper was killed before its END ran) goes with it: it
+      # held nothing, but read as a waiter (2026-11-16: one from 11-15 02:26 shown as a 26 h wait)
+      my %held = map { $_ => 1 } @live, $me;
+      for my $mk (grep { /^\.disk-/ } @names) {
+        my ($t) = $mk =~ /^\.disk-(.+?)(?:\.tmp)?$/;
+        unlink "$q/$mk" if defined $t && !$held{$t};
       }
       closedir $dh;
       my ($place) = grep { $live[$_] eq $me } 0 .. $#live;
-      if (defined $place && $place == 0) {
+      # may ask for a slot: the head, or a waiter every one before which is held by the disk (a marker fresher than
+      # 15 s; a copy of this block from before the markers writes none, so nobody passes it)
+      my $eligible = defined $place && ($place == 0 || ($dscript ne "" && !grep {
+        my $m = (stat("$q/.disk-$live[$_]"))[9]; !defined $m || time - $m > 15 } 0 .. $place - 1));
+      if (!$eligible && !$dok) { ($dok, $dlast) = (1, 0); $clear->() }  # (passed by: asks again when it may)
+      if ($eligible && defined $dscript && $dscript ne "" && time - $dlast >= 5) {
+        $dwhy = `python3 "$dscript" admit "$dir" "$dkey" 2>&1`; $dok = ($? == 0); $dlast = time; chomp $dwhy;
+        if ($dok) { $clear->() } elsif (open(my $mf, ">", $mark->() . ".tmp")) { print $mf "$dwhy\n"; close $mf; rename $mark->() . ".tmp", $mark->() }
+        $moved = time if !$dok;  # (waiting for disk is not a stalled queue: the head does not give up for it)
+      }
+      if ($eligible && $dok) {
         for my $k (0 .. $n - 1) {
           next unless flock($fh[$k], LOCK_EX | LOCK_NB);
-          unlink $ticket; undef $ticket;
+          $clear->(); unlink $ticket; undef $ticket; unlink $res if $res ne "";
           $0 = "alice-heavy-slot $title slot=$k holder=$parent dirhex=" . unpack("H*", $dir) . " end";
           print "held $k\n"; close(STDOUT);
           sleep 1 while getppid() == $parent;
@@ -175,25 +283,36 @@ heavy_slot_acquire() {
       }
       my $w = int(time - $start);
       if ($class eq "work" && $w >= $age) { $class = "land (promoted)" }  # (renamed at the next poll)
-      if ($w >= $limit) { print "timeout\n"; exit 1 }
-      if ($w >= $note) { printf "wait %d %d %s\n", ($place // 0) + 1, $w, $class; $note += 60 }
+      if (defined $place && (!defined $best || $place < $best)) { $best = $place; $moved = time }
+      if ($w >= $limit) { unlink $res if $res ne ""; $clear->(); print "timeout\n"; exit 1 }
+      if (time - $moved >= $stall) { unlink $res if $res ne ""; $clear->(); print "stalled\n"; exit 1 }
+      if ($res ne "" && time - $touched >= 30) { utime(undef, undef, $res); $touched = time }
+      if ($w >= $note) { printf "wait %d %d %s%s\n", ($place // 0) + 1, $w, $class, $dok ? "" : " disk"; $note += 60 }
       sleep 0.2;
       exit 3 if getppid() != $parent;
     }
-  ' "$d" "$n" "$limit" "$class" "$age" "$queue" "$lock" "$title" "$label")
+  ' "$d" "$n" "$limit" "$stall" "$class" "$age" "$queue" "$lock" "$title" "$label" "$rkey" "$hold" "$dscript" "$dkey")
   while IFS= read -r line <&8; do
     case "$line" in
       "pid "*) HEAVY_SLOT_KEEPER=${line#pid } ;;
       "wait "*)
         set -- $line
         case "$2" in 1) k=1st ;; 2) k=2nd ;; 3) k=3rd ;; *) k="$2th" ;; esac
-        echo "heavy slot: waiting ($k in the queue, $3 s) for $(heavy_slot_holders "$d"); ${pool} slot, as $4${5:+ $5}" >&2
+        if [ "${6:-${5:-}}" = disk ]; then
+          echo "heavy slot: $k in the queue, waiting for disk space ($3 s): $(python3 "$dscript" admit "$d" "$dkey" 2>&1)" >&2
+        else
+          echo "heavy slot: waiting ($k in the queue, $3 s) for $(heavy_slot_holders "$d"); ${pool} slot, as $4${5:+ $5}" >&2
+        fi
         ;;
       "held "*)
         exec 8<&-
         HEAVY_SLOT_INDEX=${line#held }
         HEAVY_SLOT_INFO="$d/$info$HEAVY_SLOT_INDEX"
         printf '%s\n%s\n%s\n%s\n%s\n' "$$" "$(date +%s)" "$label" "$tool" "$class" > "$HEAVY_SLOT_INFO"
+        # the take's reservation, kept by a tracker that samples its target dirs and records the peak when it ends
+        if [ -n "$dscript" ]; then
+          nohup python3 "$dscript" track "$d" "$dkey" "$$" ${HEAVY_SLOT_DISK_ROOTS:-$PWD} </dev/null >/dev/null 2>&1 &
+        fi
         if [ "$pool" = light ]; then
           ALICE_HEAVY_SLOT_LIGHT_HELD=$$
           export ALICE_HEAVY_SLOT_LIGHT_HELD
@@ -205,7 +324,14 @@ heavy_slot_acquire() {
         ;;
       timeout)
         exec 8<&-
+        HEAVY_SLOT_WAIT_END=timeout
         echo "heavy slot: waited ${limit}s for $(heavy_slot_holders "$d"); giving up (ALICE_HEAVY_SLOT_TIMEOUT=$limit)" >&2
+        return 1
+        ;;
+      stalled)
+        exec 8<&-
+        HEAVY_SLOT_WAIT_END=stalled
+        echo "heavy slot: no place gained for ${stall}s behind $(heavy_slot_holders "$d"); giving up (ALICE_HEAVY_SLOT_STALL_SECS=$stall)" >&2
         return 1
         ;;
       "error "*)
@@ -233,6 +359,77 @@ heavy_slot_release() {
     kill "$HEAVY_SLOT_KEEPER" 2>/dev/null || true
     HEAVY_SLOT_KEEPER=
   fi
+}
+# takes: one line per take in $ALICE_HEAVY_SLOT_DIR/takes.tsv (UTC time, lane, label, repository, seconds waited,
+# seconds held, exit, peak MiB of the whole tree, note). The take that records is the outermost one (its pid is
+# HEAVY_SLOT_TAKE_ROOT, set when it gets its slot): it records at its exit, or the watcher or the short wall records
+# for it when they kill its tree (a kill -9 runs no exit trap). The peak is the watcher's: the RSS (or footprint) of
+# the take's process and every descendant, kept in HEAVY_SLOT_PEAK_FILE as the largest seen. A record that cannot be
+# written changes nothing about the take.
+heavy_slot_record_take() {
+  local rc=$1 peak note=${2:-}
+  [ -e "${HEAVY_SLOT_PEAK_FILE:-/nonexistent}.done" ] && return 0
+  peak=$(cat "${HEAVY_SLOT_PEAK_FILE:-/dev/null}" 2>/dev/null) || peak=0
+  case "$peak" in '' | *[!0-9]*) peak=0 ;; esac
+  [ -n "$note" ] || note=$(cat "${HEAVY_SLOT_PEAK_FILE:-/nonexistent}.note" 2>/dev/null) || note=""
+  { printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "${HEAVY_SLOT_TAKE_LANE:-}" \
+      "${HEAVY_SLOT_TAKE_LABEL:-}" "${HEAVY_SLOT_TAKE_REPO:-}" "${HEAVY_SLOT_TAKE_WAITED:-}" \
+      "$(( $(date +%s) - ${HEAVY_SLOT_TAKE_T0:-$(date +%s)} ))" "$rc" "${peak:-}" "$note" \
+      >> "$(heavy_slot_dir)/takes.tsv"; } 2>/dev/null || true
+  [ -z "${HEAVY_SLOT_PEAK_FILE:-}" ] || : > "$HEAVY_SLOT_PEAK_FILE.done" 2>/dev/null || true
+}
+# a row for a take that never held a slot (refused at entry, or its wait timed out): lane label repo waited exit note
+heavy_slot_record_row() {
+  { printf '%s\t%s\t%s\t%s\t%s\t0\t%s\t0\t%s\n' "$(date -u +%FT%TZ)" "$1" "$2" "$3" "$4" "$5" "$6" \
+      >> "$(heavy_slot_dir)/takes.tsv"; } 2>/dev/null || true
+}
+# the process groups a take's processes run in, kept across samples: a child forked twice (its parent gone) leaves
+# the tree but keeps its group, so its memory still counts and a cap kill still reaches it. The group of the caller
+# (the watcher's own) is never followed: it holds other work. A process that starts a session of its own (setsid)
+# leaves both and is not seen. The result is in HEAVY_SLOT_GROUP_TREE (a variable, so the groups persist in the caller).
+HEAVY_SLOT_GROUPS=""
+heavy_slot_group_tree() {
+  local pg own out
+  HEAVY_SLOT_GROUP_TREE=$1
+  pg=$(ps -A -o pid=,pgid= 2>/dev/null) || return 0
+  own=$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')
+  # one stream, each line tagged: T the tree, S the snapshot, P pid and group, G a group already followed
+  out=$({ printf '%s\n' "$1" | sed 's/^/T /'; printf '%s\n' "$2" | sed 's/^/S /'; printf '%s\n' "$pg" | sed 's/^/P /'
+          for g in $HEAVY_SLOT_GROUPS; do printf 'G %s\n' "$g"; done; } | awk -v own="$own" '
+    $1 == "T" && $2 != "" { t[$2] = 1; line = $0; sub(/^T /, "", line); tree[++nt] = line; next }
+    $1 == "S" && $2 != "" { line = $0; sub(/^S[ ]+[0-9]+[ ]+[0-9]+[ ]+/, "", line); snap[$2] = line; next }
+    $1 == "P" && $2 != "" { grp[$2] = $3; next }
+    $1 == "G" { g[$2] = 1 }
+    END {
+      for (p in t) if ((p in grp) && grp[p] != own && grp[p] != "") g[grp[p]] = 1
+      printf "G"; for (k in g) printf " %s", k; printf "\n"
+      for (i = 1; i <= nt; i++) print tree[i]
+      for (p in grp) if ((grp[p] in g) && !(p in t) && (p in snap)) print p, snap[p]
+    }')
+  HEAVY_SLOT_GROUPS=$(printf '%s\n' "$out" | sed -n '1s/^G//p')
+  HEAVY_SLOT_GROUP_TREE=$(printf '%s\n' "$out" | sed '1d')
+}
+# a kill of a tree that holds the recording take: record it now, its exit trap will not run
+heavy_slot_record_kill() {
+  [ -n "${HEAVY_SLOT_TAKE_ROOT:-}" ] || return 0
+  if printf '%s\n' "$1" | awk -v r="$HEAVY_SLOT_TAKE_ROOT" '$1 == r { found = 1 } END { exit !found }'; then
+    heavy_slot_record_take 137 "$2"
+    rm -f "${HEAVY_SLOT_PEAK_FILE:-}" "${HEAVY_SLOT_PEAK_FILE:-}.note" 2>/dev/null || true
+  elif [ -n "${HEAVY_SLOT_PEAK_FILE:-}" ]; then
+    # the recording take outlives this kill and records at its exit: leave it the reason
+    printf '%s\n' "$2" > "$HEAVY_SLOT_PEAK_FILE.note" 2>/dev/null || true
+  fi
+}
+# the watcher's peak, kept as the largest any watcher of this take has seen (a nested watcher sees a smaller tree)
+heavy_slot_note_peak() {
+  local f=${HEAVY_SLOT_PEAK_FILE:-} old
+  [ -n "$f" ] || return 0
+  # a watcher still sampling after the take recorded would make the peak file again, and the lost-take recorder would
+  # then write a second row for the same take (2026-11-14: takes.tsv had each take twice, the second "lost")
+  [ -e "$f.done" ] && return 0
+  old=$(cat "$f" 2>/dev/null) || old=0
+  case "$old" in '' | *[!0-9]*) old=0 ;; esac
+  if [ "$1" -gt "$old" ]; then printf '%s\n' "$1" > "$f" 2>/dev/null || true; fi
 }
 # memory: `heavy_slot_watch <pid> &` sums the RSS of that process and its descendants about once a second
 # (ALICE_HEAVY_SLOT_RSS_POLL) and past ALICE_HEAVY_SLOT_RSS_CAP_MIB (default 8192 = 8 GiB) kills the tree (itself
@@ -344,11 +541,14 @@ heavy_slot_watch() {
         noted=1
       fi
     else
-      sum=$(printf '%s\n' "$snap" | heavy_slot_tree_mib "$root" "$self")
+      heavy_slot_group_tree "$tree" "$snap"
+      tree=$HEAVY_SLOT_GROUP_TREE
+      sum=$(printf '%s\n' "$tree" | awk '{ s += $2 } END { printf "%d", s / 1024 }')
       samples=$((samples + 1))
-      if [ "$sum" -gt "$peak" ]; then peak=$sum; fi
+      if [ "$sum" -gt "$peak" ]; then peak=$sum; heavy_slot_note_peak "$peak"; fi
       if [ "$sum" -gt "$cap" ]; then
         top=$(printf '%s\n' "$tree" | sort -k2,2nr | head -1)
+        heavy_slot_record_kill "$tree" rss-cap
         # shellcheck disable=SC2046 # one pid per word
         kill -9 $(printf '%s\n' "$tree" | cut -d" " -f1) 2>/dev/null || true
         echo "[heavy-slot] RSS cap $(awk -v c="$cap" 'BEGIN { printf "%g", c / 1024 }')GiB exceeded by ${top%% *} $(printf '%s\n' "$top" | cut -d" " -f3-) (tree $sum MiB, physical footprint)" >&2
@@ -376,6 +576,7 @@ heavy_slot_watch() {
         fi
         if [ -n "$victim" ]; then
           top=$(printf '%s\n' "$victim" | sort -k2,2nr | head -1)
+          heavy_slot_record_kill "$victim" rss-total-cap
           # shellcheck disable=SC2046 # one pid per word
           kill -9 $(printf '%s\n' "$victim" | cut -d" " -f1) 2>/dev/null || true
           echo "[heavy-slot] RSS total cap $(awk -v c="$total_cap" 'BEGIN { printf "%g", c / 1024 }')GiB exceeded ($total MiB in $slots slots), killed the largest tree ${top%% *} $(printf '%s\n' "$top" | cut -d" " -f3-) ($largest_sum MiB)" >&2
@@ -429,27 +630,33 @@ has_toolchain() { grep -q "^$1" <<<"$(rustup toolchain list)"; }
 
 # Steps CI runs that this file cannot reproduce locally (they can only fail remotely):
 #   - ci.yml:wasm:Ensure wasm32-wasip1 rust-std is installed (no cargo / grep)
-#   - ci.yml:wasm: uses actions/cache@v6 (an action this file cannot run); Install wasmtime / Check wasmtime runs fetch the linux x86_64 tarball into $RUNNER_TEMP (runner-only, here wasmtime comes from PATH)
+#   - ci.yml:wasm:Install wasmtime (its `if:` runs on what happened earlier on the runner)
+#   - ci.yml:wasm:Check wasmtime runs (no cargo / grep)
 #   - ci.yml:browser:Ensure wasm32-unknown-unknown rust-std is installed (no cargo / grep)
 #   - ci.yml:browser: uses actions/setup-node@v5 (an action this file cannot run)
 #   - ci.yml:no-std:Ensure thumbv7em-none-eabihf rust-std is installed (no cargo / grep)
 #   - ci.yml:oracle: uses actions/setup-python@v6 (an action this file cannot run)
-#   - security-audit.yml:audit:Install cargo-audit (needs network / runner-only)
-#   - security-audit.yml:deny:Install cargo-deny (needs network / runner-only)
-#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_utc_round_trip] (needs network / runner-only)
-#   - fuzz.yml:fuzz:Run fuzz target [target=fuzz_utc_round_trip] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
+#   - security-audit.yml:audit:Install cargo-audit (a tool install, setup)
+#   - security-audit.yml:deny:Install cargo-deny (a tool install, setup)
+#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_utc_round_trip] (a tool install, setup)
+#   - fuzz.yml:fuzz:Run fuzz target [target=fuzz_utc_round_trip] (runner-only (open-ended or unprovable-bounded fuzz run))
 #   - fuzz.yml:fuzz:Report a crash [target=fuzz_utc_round_trip] (its `if:` runs on what happened earlier on the runner)
-#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_tai_to_utc] (needs network / runner-only)
-#   - fuzz.yml:fuzz:Run fuzz target [target=fuzz_tai_to_utc] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
+#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_tai_to_utc] (a tool install, setup)
+#   - fuzz.yml:fuzz:Run fuzz target [target=fuzz_tai_to_utc] (runner-only (open-ended or unprovable-bounded fuzz run))
 #   - fuzz.yml:fuzz:Report a crash [target=fuzz_tai_to_utc] (its `if:` runs on what happened earlier on the runner)
-#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_tdb_and_jd] (needs network / runner-only)
-#   - fuzz.yml:fuzz:Run fuzz target [target=fuzz_tdb_and_jd] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
+#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_tdb_and_jd] (a tool install, setup)
+#   - fuzz.yml:fuzz:Run fuzz target [target=fuzz_tdb_and_jd] (runner-only (open-ended or unprovable-bounded fuzz run))
 #   - fuzz.yml:fuzz:Report a crash [target=fuzz_tdb_and_jd] (its `if:` runs on what happened earlier on the runner)
+#   - eol.yml:eol: uses actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 (an action this file cannot run)
+#   - mutants-list.yml:list: uses actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 (an action this file cannot run)
+#   - public-text.yml:public-text: uses actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 (an action this file cannot run)
+#   - public-text.yml:public-text:Public text (tree at HEAD, then the pushed commits) (reads BEFORE, PR_BASE, a value only the runner has)
 
 need cargo-audit "cargo install cargo-audit --locked"
 need cargo-deny "cargo install cargo-deny --locked"
 need cargo-machete "cargo install cargo-machete --locked"
 has_toolchain 1.85 || { echo "missing toolchain 1.85 (rustup toolchain install 1.85)" >&2; exit 1; }
+command -v python >/dev/null 2>&1 || python() { python3 "$@"; }
 
 step "ci.yml / wasm: Every integration test under wasmtime (debug, then release)"
 (
@@ -675,6 +882,30 @@ else
 fi
 )
 
+step "eol.yml / eol: Line endings (tests, then check)"
+(
+  gh_step eol.yml.eol
+(
+  python scripts/test_check_eol.py
+  python scripts/check_eol.py
+)
+)
+
+step "mutants-list.yml / list: Equivalent mutants list (tests, then check)"
+(
+  gh_step mutants-list.yml.list
+(
+  python scripts/test_mutants_equivalent_check.py
+  python scripts/mutants_equivalent_check.py --list-only
+)
+)
+
+step "public-text.yml / public-text: Tests of scripts/public_text.sh (no network)"
+(
+  gh_step public-text.yml.public-text
+( python scripts/test_public_text.py )
+)
+
 python3 scripts/test_check_eol.py
 python3 scripts/check_eol.py
 python3 scripts/test_public_text.py
@@ -733,5 +964,41 @@ step "security-audit.yml / coverage: Coverage summary"
   echo 'PREFLIGHT-INFO: security-audit.yml / coverage: Coverage summary: continue-on-error in CI, '"exit ${rc}, ${n} compared" >&2
 )
 )
+
+# CI runs that this run does not: named and counted in the receipt (run-preflight)
+not_run() { echo "PREFLIGHT-NOT-RUN: $*"; }
+# an OS leg runs here only when the host is of its family (ubuntu on Linux, macos on macOS)
+leg_not_run() {
+  case "$2:$(uname -s)" in
+    ubuntu*:Linux|macos*:Darwin) ;;
+    *) not_run "$1 [runs-on=$2] (an OS leg this host does not run)" ;;
+  esac
+}
+not_run 'ci.yml:wasm:Check wasmtime runs (no cargo / grep)'
+not_run 'ci.yml:browser: uses actions/setup-node@v5 (an action this file cannot run)'
+not_run 'ci.yml:oracle: uses actions/setup-python@v6 (an action this file cannot run)'
+not_run 'fuzz.yml:fuzz:Run fuzz target [target=fuzz_utc_round_trip] (runner-only (open-ended or unprovable-bounded fuzz run))'
+not_run 'fuzz.yml:fuzz:Report a crash [target=fuzz_utc_round_trip] (its `if:` runs on what happened earlier on the runner)'
+not_run 'fuzz.yml:fuzz:Run fuzz target [target=fuzz_tai_to_utc] (runner-only (open-ended or unprovable-bounded fuzz run))'
+not_run 'fuzz.yml:fuzz:Report a crash [target=fuzz_tai_to_utc] (its `if:` runs on what happened earlier on the runner)'
+not_run 'fuzz.yml:fuzz:Run fuzz target [target=fuzz_tdb_and_jd] (runner-only (open-ended or unprovable-bounded fuzz run))'
+not_run 'fuzz.yml:fuzz:Report a crash [target=fuzz_tdb_and_jd] (its `if:` runs on what happened earlier on the runner)'
+not_run 'eol.yml:eol: uses actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 (an action this file cannot run)'
+not_run 'mutants-list.yml:list: uses actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 (an action this file cannot run)'
+not_run 'public-text.yml:public-text: uses actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 (an action this file cannot run)'
+not_run 'public-text.yml:public-text:Public text (tree at HEAD, then the pushed commits) (reads BEFORE, PR_BASE, a value only the runner has)'
+leg_not_run ci.yml:test macos-latest
+leg_not_run ci.yml:test macos-15-intel
+leg_not_run ci.yml:test ubuntu-latest
+leg_not_run ci.yml:test ubuntu-24.04-arm
+leg_not_run ci.yml:test windows-latest
+leg_not_run ci.yml:oracle ubuntu-latest
+leg_not_run ci.yml:oracle ubuntu-24.04-arm
+leg_not_run eol.yml:eol ubuntu-latest
+leg_not_run eol.yml:eol macos-latest
+leg_not_run eol.yml:eol windows-latest
+leg_not_run mutants-list.yml:list ubuntu-latest
+leg_not_run mutants-list.yml:list macos-latest
+leg_not_run mutants-list.yml:list windows-latest
 
 echo; echo "preflight OK"

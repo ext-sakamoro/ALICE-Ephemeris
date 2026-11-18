@@ -50,16 +50,15 @@ jobs:
         run: cargo +nightly fuzz build ${{ matrix.target }}
       - name: Run fuzz target
         id: run
-        continue-on-error: true
         env:
           DURATION: ${{ inputs.duration_seconds || '60' }}
         run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time="$DURATION"
       - name: Upload crash artifacts
-        if: steps.run.outcome == 'failure'
+        if: failure() && steps.run.outcome == 'failure'
         uses: actions/upload-artifact@v6
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}/
       - name: Report a crash
-        if: steps.run.outcome == 'failure'
-        run: echo "::warning::fuzz target ${{ matrix.target }} found a crash (artifact uploaded)"
+        if: failure() && steps.run.outcome == 'failure'
+        run: echo "::error::fuzz target ${{ matrix.target }} found a crash (artifact uploaded)"

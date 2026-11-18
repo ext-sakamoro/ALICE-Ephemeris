@@ -19,7 +19,7 @@
 //! | compact | `20231114T221320Z` (whole seconds) | [`Timestamp::compact`] |
 //!
 //! A local date takes its offset from a [`UtcOffsetAt`] (a closure, or with the `os-local` feature
-//! the OS's zone, [`OsLocalZone`], the only part that reads the OS).
+//! the OS's zone, `OsLocalZone`, the only part that reads the OS).
 //!
 //! The fraction is the fewest of 0, 3, 6 or 9 digits that hold the nanoseconds. A year outside
 //! 0..=9999 is written with its sign and at least 4 digits (`+10000`, `-0001`).
@@ -337,7 +337,7 @@ impl fmt::Display for CivilDate {
 
 /// A source of the UTC offset (seconds east) in force at an instant: a time zone. A closure
 /// `|t: Timestamp| Some(offset)` is one (for tests, or a zone the caller reads itself); with the
-/// `os-local` feature, [`OsLocalZone`] is the OS's local zone.
+/// `os-local` feature, `OsLocalZone` is the OS's local zone.
 pub trait UtcOffsetAt {
     /// The offset in seconds east of UTC at `t`, `None` when there is none.
     fn utc_offset_at(&self, t: Timestamp) -> Option<i32>;

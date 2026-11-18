@@ -382,6 +382,9 @@ impl<F: Fn(Timestamp) -> Option<i32>> UtcOffsetAt for F {
 /// on unix the `TZ` variable or the system zone, on Windows the account's zone with the daylight
 /// saving rules of the instant's year. `None` where the OS has no zone (wasm) or cannot represent
 /// the instant (Windows before 1601).
+///
+/// On unix each reading looks at the environment (`TZ`): do not change the environment from
+/// another thread while asking (a data race in the C library, as with `std::env::set_var`).
 #[cfg(feature = "os-local")]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct OsLocalZone;

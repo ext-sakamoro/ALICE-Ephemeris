@@ -5,6 +5,9 @@
 //! (on unix the `TZ` variable or the system zone, read again on every call; on Windows the
 //! zone of the account, with the dynamic daylight saving rules of the instant's year).
 //!
+//! On unix each call reads the environment (`TZ`): do not change the environment from another
+//! thread while asking (a data race in the C library, as with `std::env::set_var`).
+//!
 //! This crate holds the only `unsafe` of alice-ephemeris (the two OS calls); alice-ephemeris itself
 //! forbids `unsafe` and reaches this through its `os-local` feature.
 
@@ -54,7 +57,9 @@ mod os {
     pub fn offset(secs: i64) -> Option<i32> {
         let t = libc::time_t::try_from(secs).ok()?;
         // SAFETY: `tm` is plain data, so all-zero is a valid value; `localtime_r` writes it and
-        // returns null on failure, and `tzset` has no arguments
+        // returns null on failure; `tzset` has no arguments but reads the environment (`TZ`), so
+        // a caller must not change the environment from another thread meanwhile (the same data
+        // race that makes `std::env::set_var` unsafe in edition 2024)
         let tm = unsafe {
             tzset();
             let mut tm: libc::tm = core::mem::zeroed();

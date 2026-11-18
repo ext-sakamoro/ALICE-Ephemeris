@@ -19,6 +19,8 @@ exclude = ["/.github", "/scripts", "/deny.toml", "/browser"]
 # every f64 transcendental goes through alice-det-math (bit-identical on all targets)
 alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", branch = "main", version = "0.6", default-features = false }
 serde = { version = "1", default-features = false, optional = true }
+# the OS reading behind the `os-local` feature (the only code of this crate that calls the OS)
+alice-ephemeris-os-local = { path = "os-local", version = "0.1", optional = true }
 
 [features]
 default = ["std"]
@@ -27,6 +29,9 @@ default = ["std"]
 std = ["alice-det-math/std"]
 # `serde`: `time::Timestamp` as its RFC 3339 `Z` text (no allocation)
 serde = ["dep:serde"]
+# `os-local`: `time::OsLocalZone`, the UTC offset of the OS's local time zone at an instant
+# (the FFI lives in the `os-local` member, so this crate still forbids `unsafe`)
+os-local = ["std", "dep:alice-ephemeris-os-local"]
 
 [dev-dependencies]
 # the Law identifier checks' hashing (browser/src/law_digest.rs), shared with the browser build
@@ -43,7 +48,7 @@ missing_docs = "warn"
 # and that path then reaches the code of a wasm built from it (the same source gave different bytes
 # in two directories); inside it, the path is relative
 [workspace]
-members = [".", "browser", "sky"]
+members = [".", "browser", "sky", "os-local"]
 default-members = ["."]
 exclude = ["fuzz"]
 

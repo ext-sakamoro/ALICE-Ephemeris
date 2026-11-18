@@ -1,0 +1,17 @@
+[package]
+name = "alice-ephemeris-os-local"
+version = "0.1.0"
+publish = false
+edition = "2021"
+rust-version = "1.85"
+license = "LicenseRef-Proprietary"
+description = "The UTC offset of the operating system's local time zone at a given instant (the only code of alice-ephemeris that calls the OS; alice-ephemeris's `os-local` feature uses it)"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Time"] }
+
+[lints.rust]
+missing_docs = "warn"

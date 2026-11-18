@@ -13,8 +13,13 @@
 //! |---|---|---|
 //! | RFC 3339, `Z` (also the serde form) | `2023-11-14T22:13:20.123Z` | [`Timestamp::rfc3339_z`] |
 //! | RFC 3339, `+00:00` | `2023-11-14T22:13:20.123+00:00` | [`Timestamp::rfc3339`] |
+//! | RFC 3339, `Z`, 3 fraction digits | `2023-11-14T22:13:20.000Z` (truncated) | [`Timestamp::rfc3339_millis_z`] |
+//! | date at an offset | `2023-11-15` (at `+09:00`) | [`Timestamp::civil_date_at_offset`], [`Timestamp::civil_date_in`] |
 //! | `Display` | `2023-11-14 22:13:20.123 UTC` | `{}` |
 //! | compact | `20231114T221320Z` (whole seconds) | [`Timestamp::compact`] |
+//!
+//! A local date takes its offset from a [`UtcOffsetAt`] (a closure, or with the `os-local` feature
+//! the OS's zone, [`OsLocalZone`], the only part that reads the OS).
 //!
 //! The fraction is the fewest of 0, 3, 6 or 9 digits that hold the nanoseconds. A year outside
 //! 0..=9999 is written with its sign and at least 4 digits (`+10000`, `-0001`).
@@ -97,7 +102,8 @@ impl Timestamp {
     }
 
     /// The instant of a `SystemTime` (held at [`Timestamp::MIN`] / [`Timestamp::MAX`] outside the
-    /// range).
+    /// range). The resolution is the platform's `SystemTime` (100 ns on Windows, 1 ns or 1 µs on
+    /// unix): the nanoseconds below it are 0.
     #[cfg(feature = "std")]
     #[must_use]
     pub fn from_system_time(t: std::time::SystemTime) -> Self {
@@ -176,6 +182,19 @@ impl Timestamp {
         Rfc3339 {
             time: self,
             zone: Zone::Z,
+            millis: false,
+        }
+    }
+
+    /// The RFC 3339 text with `Z` and always 3 fraction digits, the nanoseconds past the
+    /// millisecond dropped: `2023-11-14T22:13:20.000Z`, `2023-11-14T22:13:20.123Z` for
+    /// `.123999999`.
+    #[must_use]
+    pub const fn rfc3339_millis_z(self) -> Rfc3339 {
+        Rfc3339 {
+            time: self,
+            zone: Zone::Z,
+            millis: true,
         }
     }
 
@@ -185,6 +204,7 @@ impl Timestamp {
         Rfc3339 {
             time: self,
             zone: Zone::Offset,
+            millis: false,
         }
     }
 
@@ -238,6 +258,28 @@ impl Timestamp {
         Self::from_unix(secs, nanos)
     }
 
+    /// The calendar date at a UTC offset of `offset_secs` seconds east (Tokyo `32_400`, New York
+    /// in January `-18_000`): the date of a wall clock that far ahead of UTC at this instant.
+    /// `None` for an offset of a day or more.
+    #[must_use]
+    pub fn civil_date_at_offset(self, offset_secs: i32) -> Option<CivilDate> {
+        if offset_secs.unsigned_abs() >= 86_400 {
+            return None;
+        }
+        let local = self.secs + i64::from(offset_secs);
+        let (year, month, day) =
+            civil_from_mjd(local.div_euclid(SECS_PER_DAY) + MJD_OF_1970).ok()?;
+        Some(CivilDate { year, month, day })
+    }
+
+    /// The calendar date in `zone` at this instant: [`Timestamp::civil_date_at_offset`] with the
+    /// offset `zone` gives for this instant (so the two sides of a daylight saving change get
+    /// their own offsets). `None` when `zone` has no offset for it.
+    #[must_use]
+    pub fn civil_date_in(self, zone: &impl UtcOffsetAt) -> Option<CivilDate> {
+        self.civil_date_at_offset(zone.utc_offset_at(self)?)
+    }
+
     /// The date and time of day; an error only outside the calendar's range, which the type's
     /// range keeps away from.
     fn civil(self) -> Result<Civil, fmt::Error> {
@@ -255,6 +297,70 @@ impl Timestamp {
             minute,
             second,
         })
+    }
+}
+
+/// A calendar date (proleptic Gregorian), from [`Timestamp::civil_date_at_offset`]. Its
+/// `Display` is `YYYY-MM-DD` (a year outside 0..=9999 with its sign and at least 4 digits).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct CivilDate {
+    year: i64,
+    month: u8,
+    day: u8,
+}
+
+impl CivilDate {
+    /// The year (astronomical numbering: 0 is 1 BC).
+    #[must_use]
+    pub const fn year(self) -> i64 {
+        self.year
+    }
+    /// The month, 1 to 12.
+    #[must_use]
+    pub const fn month(self) -> u8 {
+        self.month
+    }
+    /// The day of the month, from 1.
+    #[must_use]
+    pub const fn day(self) -> u8 {
+        self.day
+    }
+}
+
+impl fmt::Display for CivilDate {
+    /// `YYYY-MM-DD`
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        year(f, self.year)?;
+        write!(f, "-{:02}-{:02}", self.month, self.day)
+    }
+}
+
+/// A source of the UTC offset (seconds east) in force at an instant: a time zone. A closure
+/// `|t: Timestamp| Some(offset)` is one (for tests, or a zone the caller reads itself); with the
+/// `os-local` feature, [`OsLocalZone`] is the OS's local zone.
+pub trait UtcOffsetAt {
+    /// The offset in seconds east of UTC at `t`, `None` when there is none.
+    fn utc_offset_at(&self, t: Timestamp) -> Option<i32>;
+}
+
+impl<F: Fn(Timestamp) -> Option<i32>> UtcOffsetAt for F {
+    fn utc_offset_at(&self, t: Timestamp) -> Option<i32> {
+        self(t)
+    }
+}
+
+/// The local time zone of the operating system (feature `os-local`), read at each instant asked:
+/// on unix the `TZ` variable or the system zone, on Windows the account's zone with the daylight
+/// saving rules of the instant's year. `None` where the OS has no zone (wasm) or cannot represent
+/// the instant (Windows before 1601).
+#[cfg(feature = "os-local")]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct OsLocalZone;
+
+#[cfg(feature = "os-local")]
+impl UtcOffsetAt for OsLocalZone {
+    fn utc_offset_at(&self, t: Timestamp) -> Option<i32> {
+        alice_ephemeris_os_local::utc_offset_at_unix(t.secs)
     }
 }
 
@@ -309,11 +415,14 @@ enum Zone {
     Offset,
 }
 
-/// The RFC 3339 text of a [`Timestamp`] ([`Timestamp::rfc3339_z`], [`Timestamp::rfc3339`]).
+/// The RFC 3339 text of a [`Timestamp`] ([`Timestamp::rfc3339_z`], [`Timestamp::rfc3339`],
+/// [`Timestamp::rfc3339_millis_z`]).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Rfc3339 {
     time: Timestamp,
     zone: Zone,
+    /// always 3 fraction digits (truncated) instead of the fewest that hold the value
+    millis: bool,
 }
 
 impl fmt::Display for Rfc3339 {
@@ -322,7 +431,11 @@ impl fmt::Display for Rfc3339 {
         c.date(f, "-")?;
         f.write_str("T")?;
         c.time(f, ":")?;
-        fraction(f, self.time.nanos)?;
+        if self.millis {
+            write!(f, ".{:03}", self.time.nanos / 1_000_000)?;
+        } else {
+            fraction(f, self.time.nanos)?;
+        }
         f.write_str(match self.zone {
             Zone::Z => "Z",
             Zone::Offset => "+00:00",

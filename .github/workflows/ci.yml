@@ -51,6 +51,14 @@ jobs:
       # without std: alice-det-math's software sqrt must give the same digests
       - name: Test (no default features)
         run: cargo test --locked --no-default-features
+      # the OS local-zone reading (its own package, the only one that calls the OS; on Windows its
+      # tests also check a named zone with daylight saving and the local zone against .NET's reading)
+      - name: Test (os-local)
+        run: cargo test --locked -p alice-ephemeris-os-local
+      - name: clippy (os-local)
+        run: cargo clippy --locked -p alice-ephemeris-os-local --all-targets -- -D warnings
+      - name: Test (os-local feature)
+        run: cargo test --locked --features serde,os-local --test time_millis_and_local_date
 
   wasm:
     name: Test (wasm32-wasip1 via wasmtime)
@@ -183,6 +191,8 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: clippy (no_std lib)
         run: cargo clippy --locked --lib --no-default-features -- -D warnings
+      - name: clippy (os-local feature)
+        run: cargo clippy --locked --all-targets --features serde,os-local -- -D warnings
       - name: Doc (warnings are errors)
         run: RUSTDOCFLAGS="-Dwarnings" cargo doc --locked --lib --no-deps
 

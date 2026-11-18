@@ -658,6 +658,13 @@ need cargo-machete "cargo install cargo-machete --locked"
 has_toolchain 1.85 || { echo "missing toolchain 1.85 (rustup toolchain install 1.85)" >&2; exit 1; }
 command -v python >/dev/null 2>&1 || python() { python3 "$@"; }
 
+step "ci.yml / test: clippy (os-local)"
+(
+  gh_step ci.yml.test
+relint
+( export CARGO_TERM_COLOR="always"; cargo clippy --locked -p alice-ephemeris-os-local --all-targets -- -D warnings )
+)
+
 step "ci.yml / wasm: Every integration test under wasmtime (debug, then release)"
 (
   gh_step ci.yml.wasm
@@ -764,6 +771,13 @@ step "ci.yml / clippy: clippy (no_std lib)"
   gh_step ci.yml.clippy
 relint
 ( export CARGO_TERM_COLOR="always"; cargo clippy --locked --lib --no-default-features -- -D warnings )
+)
+
+step "ci.yml / clippy: clippy (os-local feature)"
+(
+  gh_step ci.yml.clippy
+relint
+( export CARGO_TERM_COLOR="always"; cargo clippy --locked --all-targets --features serde,os-local -- -D warnings )
 )
 
 step "ci.yml / clippy: Doc (warnings are errors)"
@@ -933,6 +947,18 @@ step "ci.yml / test: Test (no default features)"
 (
   gh_step ci.yml.test
 ( export CARGO_TERM_COLOR="always"; cargo test --locked --no-default-features )
+)
+
+step "ci.yml / test: Test (os-local)"
+(
+  gh_step ci.yml.test
+( export CARGO_TERM_COLOR="always"; cargo test --locked -p alice-ephemeris-os-local )
+)
+
+step "ci.yml / test: Test (os-local feature)"
+(
+  gh_step ci.yml.test
+( export CARGO_TERM_COLOR="always"; cargo test --locked --features serde,os-local --test time_millis_and_local_date )
 )
 
 step "ci.yml / browser: sky native test"

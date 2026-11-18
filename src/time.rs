@@ -159,6 +159,35 @@ impl Timestamp {
         }
     }
 
+    /// `days` days later (earlier when negative), at the same time of day; `None` past the range
+    /// (where [`Timestamp::plus_days`] holds at the end).
+    #[must_use]
+    pub fn checked_plus_days(self, days: i64) -> Option<Self> {
+        self.checked_plus_seconds_i128(i128::from(days) * i128::from(SECS_PER_DAY))
+    }
+
+    /// `secs` seconds later (earlier when negative); held at [`Timestamp::MIN`] /
+    /// [`Timestamp::MAX`] past the range.
+    #[must_use]
+    pub fn plus_seconds(self, secs: i64) -> Self {
+        self.checked_plus_seconds(secs)
+            .unwrap_or(if secs < 0 { Self::MIN } else { Self::MAX })
+    }
+
+    /// `secs` seconds later (earlier when negative); `None` past the range.
+    #[must_use]
+    pub fn checked_plus_seconds(self, secs: i64) -> Option<Self> {
+        self.checked_plus_seconds_i128(i128::from(secs))
+    }
+
+    fn checked_plus_seconds_i128(self, secs: i128) -> Option<Self> {
+        let s = i64::try_from(i128::from(self.secs) + secs).ok()?;
+        (MIN_SECS..=MAX_SECS).contains(&s).then_some(Self {
+            secs: s,
+            nanos: self.nanos,
+        })
+    }
+
     /// Whole seconds from `earlier` to `self`, rounded toward zero (negative when `self` is
     /// earlier).
     #[must_use]

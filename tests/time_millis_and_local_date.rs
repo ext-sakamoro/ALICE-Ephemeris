@@ -143,3 +143,29 @@ fn the_os_zone_is_read_at_the_instant() {
         None => std::env::remove_var("TZ"),
     }
 }
+
+#[test]
+fn checked_and_held_addition_stop_at_the_range() {
+    let t = at(1_700_000_000, 5); // 2023-11-14T22:13:20.000000005Z
+    assert_eq!(t.checked_plus_days(1), Some(at(1_700_086_400, 5)));
+    assert_eq!(t.checked_plus_days(-1), Some(at(1_699_913_600, 5)));
+    assert_eq!(t.checked_plus_seconds(-1_700_000_001), Some(at(-1, 5)));
+    assert_eq!(t.plus_seconds(60), at(1_700_000_060, 5));
+    // the last whole second in range: 262142-12-31T23:59:59 is 8_210_266_876_799 s
+    let last = at(8_210_266_876_799, 5);
+    assert_eq!(
+        t.checked_plus_seconds(8_210_266_876_799 - 1_700_000_000),
+        Some(last)
+    );
+    assert_eq!(
+        t.checked_plus_seconds(8_210_266_876_800 - 1_700_000_000),
+        None
+    );
+    assert_eq!(t.plus_seconds(i64::MAX), Timestamp::MAX);
+    assert_eq!(t.plus_seconds(i64::MIN), Timestamp::MIN);
+    assert_eq!(t.checked_plus_days(i64::MAX), None);
+    assert_eq!(t.checked_plus_days(i64::MIN), None);
+    // 96 million days is past the end (about 262 142 years ahead), 95 million is not
+    assert_eq!(t.checked_plus_days(96_000_000), None);
+    assert!(t.checked_plus_days(95_000_000).is_some());
+}

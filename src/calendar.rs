@@ -31,14 +31,21 @@ pub fn mjd_from_civil(year: i64, month: u8, day: u8) -> Result<i64, TimeError> {
     if day == 0 || day > days_in_month(year, month) {
         return Err(TimeError::InvalidDate);
     }
-    let (m, d) = (i64::from(month), i64::from(day));
+    Ok(mjd_of(year, month, day))
+}
+
+/// MJD of a date [`mjd_from_civil`] accepts (the caller has checked it: a month outside 1..=12
+/// or a year far outside ±10⁹ gives a meaningless day count, never a panic or an overflow for
+/// the checked range).
+pub(crate) const fn mjd_of(year: i64, month: u8, day: u8) -> i64 {
+    let (m, d) = (month as i64, day as i64);
     let y = if m <= 2 { year - 1 } else { year };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
     let mp = (m + 9) % 12;
     let doy = (153 * mp + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    Ok(era * 146_097 + doe - 719_468 + MJD_OF_1970)
+    era * 146_097 + doe - 719_468 + MJD_OF_1970
 }
 
 /// `(year, month, day)` of an MJD.

@@ -46,7 +46,8 @@
 use core::fmt;
 use core::str::FromStr;
 
-use crate::calendar::{civil_from_mjd, days_in_month, mjd_from_civil};
+use crate::calendar::{civil_from_mjd, days_in_month, mjd_from_civil, mjd_of};
+use crate::TimeError;
 
 const NANOS_PER_SEC: u32 = 1_000_000_000;
 const SECS_PER_DAY: i64 = 86_400;
@@ -329,7 +330,8 @@ impl Timestamp {
     }
 }
 
-/// A calendar date (proleptic Gregorian), from [`Timestamp::civil_date_at_offset`]. Its
+/// A calendar date (proleptic Gregorian), from [`Timestamp::civil_date_at_offset`] or the checked
+/// [`CivilDate::from_ymd`]. Its order is the calendar's. Its
 /// `Display` is `YYYY-MM-DD` (a year outside 0..=9999 with its sign and at least 4 digits).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct CivilDate {
@@ -339,6 +341,22 @@ pub struct CivilDate {
 }
 
 impl CivilDate {
+    /// The date `year`-`month`-`day` (proleptic Gregorian, astronomical year numbering), checked
+    /// the way [`crate::mjd_from_civil`] checks it: [`TimeError::InvalidDate`] for a month outside
+    /// 1..=12, a day outside its month (29 February only in a leap year) or a year outside ±10⁹.
+    pub fn from_ymd(year: i64, month: u8, day: u8) -> Result<Self, TimeError> {
+        mjd_from_civil(year, month, day)?;
+        Ok(Self { year, month, day })
+    }
+
+    /// The whole days from `self` to `later`, negative when `later` is the earlier date: the
+    /// difference of their Modified Julian Dates. Every `CivilDate` is a checked date, so the
+    /// difference fits `i64` (at most about 7.3·10¹¹ days).
+    #[must_use]
+    pub const fn days_until(self, later: Self) -> i64 {
+        mjd_of(later.year, later.month, later.day) - mjd_of(self.year, self.month, self.day)
+    }
+
     /// The year (astronomical numbering: 0 is 1 BC).
     #[must_use]
     pub const fn year(self) -> i64 {
